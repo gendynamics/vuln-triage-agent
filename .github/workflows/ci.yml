@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install openai pytest
+      - name: Run test suite
+        run: bash run_tests.sh
+      - name: AURA unit checks
+        run: python -c "
+from src.aura import verify_submission
+# real eye, close range -> pass
+v = verify_submission(0.52, 120, 120, 0.92, 'close')
+assert v.passed, v.reason
+# flat photo -> fail
+v2 = verify_submission(1.0, 120, 120, 0.92, 'close')
+assert not v2.passed, v2.reason
+# range with strong lipsync -> pass
+v3 = verify_submission(0.9, 30, 220, 0.95, 'range')
+assert v3.passed, v3.reason
+print('AURA checks passed')
+"

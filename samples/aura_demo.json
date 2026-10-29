@@ -1,0 +1,8 @@
+{
+  "glint_arc_ratio": 0.52,
+  "eye_width_px": 120,
+  "mouth_width_px": 120,
+  "viseme_match": 0.92,
+  "distance_hint": "close",
+  "expected_result": "AURA gate passes, triage proceeds"
+}

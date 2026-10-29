@@ -1,0 +1,8 @@
+Title: Unauthenticated SQL Injection in Search Endpoint
+Endpoint: GET /api/v2/search?q=
+Parameter: q (reflected in error page)
+Database: PostgreSQL 15
+Auth: None required
+PoC: /api/v2/search?q=' OR 1=1-- 
+Impact: Full read access to users, sessions, and payment_records tables.
+CVSS vector (submitter estimate): AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
