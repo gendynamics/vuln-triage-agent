@@ -105,11 +105,11 @@ class TestModelTierRouting(unittest.TestCase):
         self.assertIn("ultra", MODEL_ROUTING)
 
     def test_nano_is_smallest(self):
-        self.assertIn("Nano", MODEL_ROUTING["nano"])
+        self.assertIn("nano", MODEL_ROUTING["nano"])
 
     def test_ultra_is_default_fallback(self):
         # unknown tier should fall back to ultra
-        with patch("agent.client") as mock_client:
+        with patch("agent._client") as mock_client:
             mock_create = MagicMock()
             mock_create.return_value.choices = [
                 MagicMock(message=MagicMock(content=json.dumps(make_valid_response())))
@@ -121,7 +121,7 @@ class TestModelTierRouting(unittest.TestCase):
             self.assertEqual(kwargs["model"], MODEL_ROUTING["ultra"])
 
     def test_nano_tier_selected(self):
-        with patch("agent.client") as mock_client:
+        with patch("agent._client") as mock_client:
             mock_create = MagicMock()
             mock_create.return_value.choices = [
                 MagicMock(message=MagicMock(content=json.dumps(make_valid_response())))
@@ -133,7 +133,7 @@ class TestModelTierRouting(unittest.TestCase):
             self.assertEqual(kwargs["model"], MODEL_ROUTING["nano"])
 
     def test_temperature_is_zero(self):
-        with patch("agent.client") as mock_client:
+        with patch("agent._client") as mock_client:
             mock_create = MagicMock()
             mock_create.return_value.choices = [
                 MagicMock(message=MagicMock(content=json.dumps(make_valid_response())))
@@ -146,8 +146,11 @@ class TestModelTierRouting(unittest.TestCase):
 
 
 class TestMockedTokenFactory(unittest.TestCase):
+    # reuse the schema assertions defined on TestSchemaValidation
+    _assert_schema = TestSchemaValidation._assert_schema
+
     def test_triage_returns_parsed_json(self):
-        with patch("agent.client") as mock_client:
+        with patch("agent._client") as mock_client:
             mock_create = MagicMock()
             mock_create.return_value.choices = [
                 MagicMock(message=MagicMock(content=json.dumps(make_valid_response())))
@@ -160,7 +163,7 @@ class TestMockedTokenFactory(unittest.TestCase):
 
     def test_code_fence_stripped(self):
         fenced = "```json\n" + json.dumps(make_valid_response()) + "\n```"
-        with patch("agent.client") as mock_client:
+        with patch("agent._client") as mock_client:
             mock_create = MagicMock()
             mock_create.return_value.choices = [
                 MagicMock(message=MagicMock(content=fenced))
@@ -176,7 +179,7 @@ class TestMockedTokenFactory(unittest.TestCase):
                 triage("test")
 
     def test_system_prompt_enforces_strict_json(self):
-        self.assertIn("strict JSON", SYSTEM_PROMPT.lower())
+        self.assertIn("strict json", SYSTEM_PROMPT.lower())
         self.assertIn("No markdown", SYSTEM_PROMPT)
 
     def test_user_template_contains_placeholder(self):
