@@ -86,6 +86,14 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
       const z = (i) => L[i].z * W;
       f.lip_z = [z(0), z(17), z(13), z(14), z(61), z(291)];
       f.mesh2d = MESH_PTS.map(P); // 12 sparse pixel landmarks for the planar-vs-3D (parallax) check
+      // rPPG scalars only: mean R,G,B of 3 skin ROIs (forehead, cheeks), box half-size 0.15*IOD. No pixels leave.
+      { const iod = Math.hypot(P(468)[0] - P(473)[0], P(468)[1] - P(473)[1]), hs = Math.max(2, Math.round(0.15 * iod));
+        const roi = (c) => { const x0 = Math.max(0, Math.round(c[0] - hs)), y0 = Math.max(0, Math.round(c[1] - hs));
+          const w = Math.max(1, Math.min(W - x0, 2 * hs)), h = Math.max(1, Math.min(H - y0, 2 * hs)), d = cx.getImageData(x0, y0, w, h).data;
+          let r = 0, g = 0, b = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+          const n = d.length / 4; return [+(r / n).toFixed(3), +(g / n).toFixed(3), +(b / n).toFixed(3)]; };
+        const fh = [(P(10)[0] + P(151)[0]) / 2, (P(10)[1] + P(151)[1]) / 2];
+        f.rppg = { forehead: roi(fh), lcheek: roi(P(50)), rcheek: roi(P(280)) }; }
       f.iod_px = Math.hypot(P(468)[0] - P(473)[0], P(468)[1] - P(473)[1]);
       const ps = pose(r.facialTransformationMatrixes && r.facialTransformationMatrixes[0]);
       if (ps) { f.yaw = ps.yaw; f.pitch = ps.pitch; stats.yaw.push(ps.yaw); }

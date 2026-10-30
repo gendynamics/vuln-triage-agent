@@ -96,3 +96,9 @@ Only the label and the evidence LLR scalars, vetoes and reasons are appended to 
 Then run `python tools/calibrate.py` (add `--isotonic` if you have plenty of data). It runs a Platt fit with 5-fold CV and prints FAR/FRR at the 0.85 and 0.999 tiers, with a Clopper-Pearson 95% upper bound on FAR.
 It writes `app/data/calibration.cfg`, which the server loads at startup (`AURA_CALIBRATION=path` overrides it). Until then every result says `calibrated: false`.
 The 1e-5 and 99.9% figures are design targets. Showing FAR ≤ 1e-5 takes about 300,000 spoof attempts with zero accepts (rule of three). FAR ≤ 1e-6 takes about 3,000,000. FRR ≤ 0.1% takes about 3,000 live attempts.
+
+## Webcam-only channels (Python only; the Rust crate scores the canonical silent scan)
+
+Each channel adds an LLR to `total_llr`, and its codes show in the debug panel. `geometry_llr` scores lip-shape dynamics. `attention_llr` uses eyeLook/eyeBlink and adds `Inattentive` (soft fail) and `EyesClosed`. `consistency_llr` adds `FrameTeleport`, `BlendshapeJitter` (only at ≥20 fps) and `IrregularTiming`. `planarity_llr` fits a homography to 12 landmarks and vetoes `PlanarFace` once there is ≥8° of yaw (otherwise `PoseTooStatic3D`). `rppg_llr` (POS/CHROM, 0.7–4 Hz, 3 ROIs) vetoes `NoPulse` only in adequate light (otherwise `LowLight`) and needs ≥5 s at ≥10 fps (otherwise `RppgShort`).
+The browser sends only the rPPG ROI mean RGB and 12 sparse points. None of it is stored.
+How this compares with Face ID: these are liveness-only analogues of its attention, depth and anti-spoof checks, built on an RGB webcam. There is no IR dot projector or depth sensor, and there is **no identity matching or face template**. That makes the assurance much weaker, and every threshold here is an uncalibrated design value.

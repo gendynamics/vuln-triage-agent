@@ -218,7 +218,8 @@ GAP_MS = 250
 
 def consistency_features(extras: List[dict]) -> Optional[dict]:
     """teleports: frames whose eye midpoint moves > 0.5 IOD within <= 100 ms (face swap / splice / cut).
-    roughness: mean|d2 x| / mean|dx| of jawOpen and smile blendshapes (smooth motion < 1, white noise ~1.5-2).
+    roughness: mean|d2 x| / mean|dx| of jawOpen and smile blendshapes (smooth motion < 1, white noise ~1.5-2);
+               only at >= 20 fps (median frame interval <= 50 ms).
     timing: coefficient of variation of frame intervals and count of gaps > 250 ms."""
     if len(extras) < 10:
         return None
@@ -234,7 +235,12 @@ def consistency_features(extras: List[dict]) -> Optional[dict]:
         if dt <= TELEPORT_MAX_DT and math.dist(ma, mb) / iod > TELEPORT_IOD:
             tele += 1
     rough = []
-    for k in ("jawOpen", "mouthSmileLeft", "mouthSmileRight"):
+    dts_all = sorted(b["t_ms"] - a["t_ms"] for a, b in zip(extras, extras[1:]))
+    if dts_all[len(dts_all) // 2] > 50:  # < 20 fps undersamples speech; roughness not meaningful
+        keys = ()
+    else:
+        keys = ("jawOpen", "mouthSmileLeft", "mouthSmileRight")
+    for k in keys:
         v = [float((e.get("blend") or {}).get(k, float("nan"))) for e in extras]
         if any(math.isnan(x) for x in v):
             continue
@@ -353,6 +359,130 @@ def planarity_channel(extras: List[dict]) -> Tuple[float, List[str], List[str]]:
     return 0.0, [], []
 
 
+# ---------------- rPPG (remote photoplethysmography) ----------------
+RPPG_FS = 30.0
+RPPG_BAND = (0.7, 4.0)      # Hz (42-240 bpm)
+RPPG_MIN_S = 5.0
+RPPG_MIN_FPS = 10.0
+LIGHT_MIN, LIGHT_MAX = 60.0, 235.0  # mean ROI luma for "adequate light"
+SNR_PULSE_DB = -1.0
+SNR_NOPULSE_DB = -2.0
+ROIS = ("forehead", "lcheek", "rcheek")
+
+
+def _resample(t, v, fs=RPPG_FS):
+    t0, t1 = t[0], t[-1]
+    n = int((t1 - t0) * fs) + 1
+    out, j = [], 0
+    for k in range(n):
+        x = t0 + k / fs
+        while j < len(t) - 2 and t[j + 1] < x:
+            j += 1
+        a = (x - t[j]) / max(t[j + 1] - t[j], 1e-9)
+        out.append(v[j] + (v[j + 1] - v[j]) * min(max(a, 0.0), 1.0))
+    return out
+
+
+def pos_signal(rgb, fs=RPPG_FS, win_s=1.6):
+    """POS (Wang et al. 2017): per 1.6 s window, Cn = C/mean(C); S1 = G - B; S2 = G + B - 2R;
+    h = S1 + (std S1 / std S2) S2, mean-removed, overlap-added."""
+    n, L = len(rgb), max(int(win_s * fs), 4)
+    H = [0.0] * n
+    for s0 in range(0, n - L + 1):
+        w = rgb[s0:s0 + L]
+        m = [_mean([c[k] for c in w]) or 1.0 for k in range(3)]
+        s1 = [c[1] / m[1] - c[2] / m[2] for c in w]
+        s2 = [c[1] / m[1] + c[2] / m[2] - 2 * c[0] / m[0] for c in w]
+        a = _std(s1) / (_std(s2) or 1e-9)
+        h = [x + a * y for x, y in zip(s1, s2)]
+        mh = _mean(h)
+        for i, x in enumerate(h):
+            H[s0 + i] += x - mh
+    return H
+
+
+def chrom_signal(rgb):
+    """CHROM (de Haan & Jeanne 2013): X = 3Rn - 2Gn, Y = 1.5Rn + Gn - 1.5Bn, S = X - (std X/std Y) Y."""
+    m = [_mean([c[k] for c in rgb]) or 1.0 for k in range(3)]
+    X = [3 * c[0] / m[0] - 2 * c[1] / m[1] for c in rgb]
+    Y = [1.5 * c[0] / m[0] + c[1] / m[1] - 1.5 * c[2] / m[2] for c in rgb]
+    a = _std(X) / (_std(Y) or 1e-9)
+    return [x - a * y for x, y in zip(X, Y)]
+
+
+def _detrend(v, k=15):
+    """Subtract a centred moving average (~0.5 s) to remove slow illumination drift."""
+    out = []
+    for i in range(len(v)):
+        w = v[max(0, i - k):i + k + 1]
+        out.append(v[i] - sum(w) / len(w))
+    return out
+
+
+def spectrum_snr(v, fs=RPPG_FS, band=RPPG_BAND, df=0.02):
+    """Hann-windowed DFT on a 0.02 Hz grid in the pulse band. SNR (dB) = power within +-0.1 Hz of the peak
+    and of its 2nd harmonic / remaining in-band power (de Haan's definition)."""
+    n = len(v)
+    w = [0.5 - 0.5 * math.cos(2 * math.pi * i / max(n - 1, 1)) for i in range(n)]
+    x = [a * b for a, b in zip(v, w)]
+    fr, pw = [], []
+    f = band[0]
+    while f <= band[1] + 1e-9:
+        c = sum(xi * math.cos(2 * math.pi * f * i / fs) for i, xi in enumerate(x))
+        s_ = sum(xi * math.sin(2 * math.pi * f * i / fs) for i, xi in enumerate(x))
+        fr.append(f); pw.append(c * c + s_ * s_); f += df
+    k = max(range(len(pw)), key=pw.__getitem__)
+    fp = fr[k]
+    sig_ = sum(p for f_, p in zip(fr, pw) if abs(f_ - fp) <= 0.1 or abs(f_ - 2 * fp) <= 0.1)
+    noise = sum(pw) - sig_
+    return fp, 10 * math.log10(max(sig_, 1e-20) / max(noise, 1e-20))
+
+
+def rppg_features(extras: List[dict]) -> Optional[dict]:
+    fr = [e for e in extras if isinstance(e.get("rppg"), dict) and all(k in e["rppg"] for k in ROIS)]
+    if len(fr) < 10:
+        return None
+    t = [e["t_ms"] / 1000.0 for e in fr]
+    dur = t[-1] - t[0]
+    fps = (len(fr) - 1) / dur if dur > 0 else 0.0
+    luma = _mean([0.299 * e["rppg"][k][0] + 0.587 * e["rppg"][k][1] + 0.114 * e["rppg"][k][2] for e in fr for k in ROIS])
+    out = {"duration_s": dur, "fps": fps, "luma": luma, "rois": {}}
+    if dur < RPPG_MIN_S or fps < RPPG_MIN_FPS:
+        return out
+    for k in ROIS:
+        rgb = list(zip(*[_resample(t, [float(e["rppg"][k][c]) for e in fr]) for c in range(3)]))
+        best = None
+        for name, sig_ in (("pos", pos_signal(rgb)), ("chrom", chrom_signal(rgb))):
+            fp, snr = spectrum_snr(_detrend(sig_))
+            if best is None or snr > best[2]:
+                best = (name, fp, snr)
+        out["rois"][k] = {"method": best[0], "hz": best[1], "snr_db": best[2]}
+    hz = [v["hz"] for v in out["rois"].values()]
+    # cross-ROI coherence: number of ROIs whose peak agrees (within 0.15 Hz) with the best ROI's peak
+    ref = max(out["rois"].values(), key=lambda v: v["snr_db"])
+    out["coherent"] = sum(1 for h in hz if abs(h - ref["hz"]) <= 0.15)
+    out["snr_db"] = ref["snr_db"]; out["hz"] = ref["hz"]
+    return out
+
+
+def rppg_channel(extras: List[dict]) -> Tuple[float, List[str], List[str]]:
+    """Light outside [60, 235] luma -> "LowLight" (0, inconclusive for this channel); < 5 s or < 10 fps -> "RppgShort".
+    Pulse = best-ROI SNR >= -1 dB and >= 2 of 3 ROIs agree on the peak -> +1.5.
+    "NoPulse" veto only in adequate light: SNR < -2 dB and no 2 ROIs agree. Otherwise 0."""
+    f = rppg_features(extras)
+    if f is None:
+        return 0.0, [], []
+    if not (LIGHT_MIN <= f["luma"] <= LIGHT_MAX):
+        return 0.0, ["LowLight"], []
+    if not f["rois"]:
+        return 0.0, ["RppgShort"], []
+    if f["snr_db"] >= SNR_PULSE_DB and f["coherent"] >= 2:
+        return 1.5, [], []
+    if f["snr_db"] < SNR_NOPULSE_DB and f["coherent"] < 2:
+        return -3.0, [], ["NoPulse"]
+    return 0.0, [], []
+
+
 def extras_from_json(arr: List[dict]) -> List[dict]:
     out = []
     for f in arr:
@@ -379,4 +509,6 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
     apply_channel(r, "consistency_llr", llr, rs, calibration=calibration)
     llr, rs, vs = planarity_channel(scan_extras)
     apply_channel(r, "planarity_llr", llr, rs, vs, calibration=calibration)
+    llr, rs, vs = rppg_channel(all_extras or scan_extras)  # whole capture: pulse needs >= 5 s
+    apply_channel(r, "rppg_llr", llr, rs, vs, calibration=calibration)
     return r

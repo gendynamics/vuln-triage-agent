@@ -183,3 +183,46 @@ class PlanarityTests(unittest.TestCase):
 
     def test_static_pose_inconclusive(self):
         self.assertEqual(W.planarity_channel(_proj_frames(flat=True, yaw_max=3))[1], ["PoseTooStatic3D"])
+
+
+def _rppg_frames(pulse=True, base=140.0, noise=0.2, hz=1.2, n=270, fps=30, seed=0):
+    rng = random.Random(seed); out = []
+    for i in range(n):
+        t = i / fps; p = math.sin(2 * math.pi * hz * t) if pulse else 0.0
+        roi = lambda: [base * (1 + 0.0006 * p) + rng.gauss(0, noise), base * 0.8 * (1 + 0.002 * p) + rng.gauss(0, noise),
+                       base * 0.6 * (1 + 0.0012 * p) + rng.gauss(0, noise)]
+        out.append({"t_ms": int(t * 1000), "rppg": {k: roi() for k in W.ROIS}})
+    return out
+
+
+class RppgTests(unittest.TestCase):
+    def test_pulse_detected_and_rate(self):
+        f = W.rppg_features(_rppg_frames(seed=1))
+        self.assertAlmostEqual(f["hz"], 1.2, delta=0.1); self.assertEqual(f["coherent"], 3)
+        self.assertEqual(W.rppg_channel(_rppg_frames(seed=1)), (1.5, [], []))
+
+    def test_no_pulse_veto_in_good_light(self):
+        vetoed = sum("NoPulse" in W.rppg_channel(_rppg_frames(False, seed=s))[2] for s in range(10))
+        self.assertGreaterEqual(vetoed, 6)
+
+    def test_pulse_never_vetoed(self):
+        for s in range(10):
+            self.assertNotIn("NoPulse", W.rppg_channel(_rppg_frames(seed=s))[2])
+
+    def test_low_light_inconclusive(self):
+        self.assertEqual(W.rppg_channel(_rppg_frames(False, base=30.0)), (0.0, ["LowLight"], []))
+
+    def test_short_or_slow(self):
+        self.assertEqual(W.rppg_channel(_rppg_frames(n=60))[1], ["RppgShort"])
+        self.assertEqual(W.rppg_channel(_rppg_frames(n=60, fps=8))[1], ["RppgShort"])
+
+    def test_pos_chrom_recover_tone(self):
+        rgb = [(100 * (1 + 0.003 * math.sin(2 * math.pi * 1.5 * i / 30)), 80 * (1 + 0.01 * math.sin(2 * math.pi * 1.5 * i / 30)), 60.0) for i in range(240)]
+        for sig in (W.pos_signal(rgb), W.chrom_signal(rgb)):
+            hz, snr = W.spectrum_snr(W._detrend(sig))
+            self.assertAlmostEqual(hz, 1.5, delta=0.05); self.assertGreater(snr, 5)
+
+
+class ConsistencyFpsTests(unittest.TestCase):
+    def test_low_fps_skips_roughness(self):
+        self.assertNotIn("BlendshapeJitter", W.consistency_channel(_cons_frames(noise=0.2, dt=120))[1])
