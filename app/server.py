@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.join(ROOT, "..", "src"))
 
 import aura_scan as S  # noqa: E402
 import aura_challenge as C  # noqa: E402
+import aura_webcam as W  # noqa: E402
 
 try:
     import agent  # needs `openai` (requirements.txt); only required for live mode
@@ -182,6 +183,7 @@ def do_scan(body):
             return 400, {"error": f"bad frames: {e}"}
     else:
         return 400, {"error": "provide simulate=<kind> or frames=[...]"}
+    extras = W.extras_from_json(body["frames"]) if not kind else None
     body.pop("frames", None)  # raw webcam frames (eye crops) live only in this call
     tier = body.get("tier_gate", "high_assurance")
     nonce = body.get("nonce")
@@ -193,6 +195,9 @@ def do_scan(body):
         camera_feats = []
         for f in frames:
             m = S.build_lip_mesh(f.lips_outer, f.lips_inner)
+            if extras and len(extras) == len(frames):  # de-rolled lips (pose-normalised) for the challenge
+                o, i = W.deroll_lips(extras[len(camera_feats)])
+                m = S.build_lip_mesh(o, i)
             camera_feats.append(C.LipFeat(f.t_ms, m["openness"], m["spread"]))
         if ch and not body.get("challenge_response"):
             later = [f for f in frames if f.t_ms >= ch.prompt_end_ms]
@@ -212,6 +217,10 @@ def do_scan(body):
         ch_out = SESSION.verify(nonce, feats)
         feats.clear()
         C.apply_to_scan(r, ch_out)
+    if extras:
+        scan_ex = [e for e in extras if not ch or e["t_ms"] >= ch.prompt_end_ms] or extras
+        W.apply_webcam_channels(r, scan_ex, extras)
+        extras.clear()
     g = gate_summary(r, ch_out, kind)
     g["source"] = "simulated" if kind else "camera"
     if camera_feats is not None:
