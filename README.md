@@ -21,6 +21,10 @@ python src/agent.py
 bash run_tests.sh
 ```
 
+## Bundled app
+
+Run the whole thing (AURA gate → triage → records → dashboard) with `python app/server.py` and open http://localhost:8000. See [app/README.md](app/README.md).
+
 ## Silent scan
 
 `crates/aura-rs/src/scan.rs` (Rust) and `src/aura_scan.py` (Python mirror) add a

