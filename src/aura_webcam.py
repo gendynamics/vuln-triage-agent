@@ -210,6 +210,65 @@ def attention_channel(extras: List[dict]) -> Tuple[float, List[str]]:
     return 0.0, rs
 
 
+# ---------------- temporal frame consistency ----------------
+TELEPORT_IOD = 0.5     # eye-midpoint jump between consecutive frames, in inter-ocular distances
+TELEPORT_MAX_DT = 100  # ms; longer gaps are "FrameGap", not teleports
+GAP_MS = 250
+
+
+def consistency_features(extras: List[dict]) -> Optional[dict]:
+    """teleports: frames whose eye midpoint moves > 0.5 IOD within <= 100 ms (face swap / splice / cut).
+    roughness: mean|d2 x| / mean|dx| of jawOpen and smile blendshapes (smooth motion < 1, white noise ~1.5-2).
+    timing: coefficient of variation of frame intervals and count of gaps > 250 ms."""
+    if len(extras) < 10:
+        return None
+    tele = gaps = 0
+    for a, b in zip(extras, extras[1:]):
+        dt = b["t_ms"] - a["t_ms"]
+        if dt > GAP_MS:
+            gaps += 1
+            continue
+        iod = math.dist(b["iris_l"], b["iris_r"]) or 1.0
+        ma = ((a["iris_l"][0] + a["iris_r"][0]) / 2, (a["iris_l"][1] + a["iris_r"][1]) / 2)
+        mb = ((b["iris_l"][0] + b["iris_r"][0]) / 2, (b["iris_l"][1] + b["iris_r"][1]) / 2)
+        if dt <= TELEPORT_MAX_DT and math.dist(ma, mb) / iod > TELEPORT_IOD:
+            tele += 1
+    rough = []
+    for k in ("jawOpen", "mouthSmileLeft", "mouthSmileRight"):
+        v = [float((e.get("blend") or {}).get(k, float("nan"))) for e in extras]
+        if any(math.isnan(x) for x in v):
+            continue
+        d1, d2 = [b - a for a, b in zip(v, v[1:])], []
+        d2 = [b - a for a, b in zip(d1, d1[1:])]
+        m1 = sum(map(abs, d1)) / len(d1)
+        if m1 > 0.004:  # only when the channel actually moves
+            rough.append(sum(map(abs, d2)) / len(d2) / m1)
+    dts = [b["t_ms"] - a["t_ms"] for a, b in zip(extras, extras[1:]) if b["t_ms"] > a["t_ms"]]
+    cv = _std(dts) / _mean(dts) if dts and _mean(dts) > 0 else 0.0
+    return {"teleports": tele, "gaps": gaps, "roughness": max(rough) if rough else None, "dt_cv": cv}
+
+
+def consistency_channel(extras: List[dict]) -> Tuple[float, List[str]]:
+    """LLR: teleports >= 2 -> -2 "FrameTeleport" (1 -> -0.5); roughness > 1.4 -> -1 "BlendshapeJitter",
+    < 1.0 -> +0.5; gaps or dt CV > 0.5 -> -0.5 "IrregularTiming"."""
+    f = consistency_features(extras)
+    if f is None:
+        return 0.0, []
+    llr, rs = 0.0, []
+    if f["teleports"] >= 2:
+        llr -= 2; rs.append("FrameTeleport")
+    elif f["teleports"] == 1:
+        llr -= 0.5
+    if f["roughness"] is not None:
+        if f["roughness"] > 1.4:
+            llr -= 1; rs.append("BlendshapeJitter")
+        elif f["roughness"] < 1.0:
+            llr += 0.5
+    if f["gaps"] or f["dt_cv"] > 0.5:
+        llr -= 0.5; rs.append("IrregularTiming")
+    return llr, rs
+
+
 def extras_from_json(arr: List[dict]) -> List[dict]:
     out = []
     for f in arr:
@@ -232,4 +291,6 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
     apply_channel(r, "geometry_llr", llr, rs, calibration=calibration)
     llr, rs = attention_channel(scan_extras)
     apply_channel(r, "attention_llr", llr, rs, calibration=calibration)
+    llr, rs = consistency_channel(scan_extras)
+    apply_channel(r, "consistency_llr", llr, rs, calibration=calibration)
     return r

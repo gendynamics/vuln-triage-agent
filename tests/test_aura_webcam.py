@@ -113,3 +113,29 @@ class AttentionTests(unittest.TestCase):
     def test_head_turned_and_no_data(self):
         self.assertIn("Inattentive", W.attention_channel(_att_frames(yaw=50))[1])
         self.assertEqual(W.attention_channel([{"t_ms": 0, "blend": {"jawOpen": 0.1}}] * 30), (0.0, []))
+
+
+def _cons_frames(n=60, noise=0.0, teleport_at=(), dt=33, gap_at=None, seed=0):
+    rng = random.Random(seed); out = []; t = 0
+    for i in range(n):
+        t += 400 if i == gap_at else dt
+        x = 300 + 5 * math.sin(i / 8) + (200 if any(i >= k and i < k + 3 for k in teleport_at) else 0)
+        jaw = 0.3 + 0.25 * math.sin(i / 5) + rng.gauss(0, noise)
+        out.append({"t_ms": t, "iris_l": (x - 60, 240.0), "iris_r": (x + 60, 240.0),
+                    "blend": {"jawOpen": jaw, "mouthSmileLeft": 0.1, "mouthSmileRight": 0.1}})
+    return out
+
+
+class ConsistencyTests(unittest.TestCase):
+    def test_smooth_live(self):
+        self.assertEqual(W.consistency_channel(_cons_frames()), (0.5, []))
+
+    def test_teleport(self):
+        llr, rs = W.consistency_channel(_cons_frames(teleport_at=(20,)))  # jump there and back = 2
+        self.assertIn("FrameTeleport", rs); self.assertLess(llr, 0)
+
+    def test_jitter(self):
+        self.assertIn("BlendshapeJitter", W.consistency_channel(_cons_frames(noise=0.2))[1])
+
+    def test_gap(self):
+        self.assertIn("IrregularTiming", W.consistency_channel(_cons_frames(gap_at=30))[1])
