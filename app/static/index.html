@@ -277,7 +277,8 @@ svg path.seg{cursor:pointer;transition:opacity .2s}svg path.seg:hover{opacity:1!
           <optgroup label="Real camera"><option value="camera">Live camera · your webcam (MediaPipe, in-browser)</option></optgroup><optgroup label="Simulate live person"><option value="Live" selected>Live person · close</option><option value="LiveAudio">Live person · with audio</option><option value="LiveRange">Live person · range 1.5 m</option></optgroup>
           <optgroup label="Simulate photo / replay / deepfake"><option value="PrintedStatic">Printed photo · static</option><option value="PrintedMoved">Printed photo · moved</option><option value="ScreenMoire">Screen replay · moiré</option><option value="ScreenFlicker">Screen replay · flicker</option><option value="ScreenRectGlint">Screen replay · rectangular glint</option><option value="ScreenDuplicated">Screen replay · duplicated frames</option><option value="DeepfakeDesync">Deepfake · AV desync</option><option value="DeepfakeSmooth">Deepfake · too smooth</option><option value="DeepfakeLight">Deepfake · light mismatch</option></optgroup>
         </select>
-        <label class="chk" style="margin-top:6px"><input type="checkbox" id="consentChk" checked> I consent to a liveness-only scan (no storage, no identification)</label>
+        <label class="chk" style="margin-top:6px"><input type="checkbox" id="consentChk" checked> I consent to a liveness-only scan (no storage, no identification). With the colour challenge on, the screen will softly change colour for ~3 s (≤2 changes/s, no flashing strobe).</label>
+        <label class="chk" style="margin-top:4px"><input type="checkbox" id="flashChk" checked> Color challenge (camera mode): soft screen-colour sequence, scores only the skin's mean-colour response</label>
         <div class="hint" id="chPhrase" style="margin:6px 0 0">Challenge: —</div>
         <div class="hint" id="camStat" style="margin:4px 0 0">Live camera: pick it above, tick consent, then Run. The browser will ask for camera permission.</div>
         <label class="chk" style="margin-top:4px"><input type="checkbox" id="micChk"> Also use microphone (A/V sync channel, energy envelope only)</label>
@@ -1002,7 +1003,7 @@ function showCamReject(msg){const nf=/No face found/.test(msg);
   $("aPill").className="pill no";$("aPill").textContent=nf?"✕ Rejected · no face":"✕ Rejected · camera error";
   $("aReason").textContent=(nf?"Biometric gate FAILED — no face detected. ":"Biometric gate FAILED — camera scan did not complete. ")+msg+" Submission not verified.";
   $("flowTs").textContent="rejected at AURA gate · "+stamp();}
-function showDbg(g){const o=$("dbgOut");o.textContent=JSON.stringify({status:g.status,posterior:g.posterior,evidence:g.evidence,vetoes:g.vetoes,reasons:g.reasons,challenge:g.challenge,frames_used:g.frames_used,glint_arc_ratio:g.glint_arc_ratio,viseme_match:g.viseme_match,distance_hint:g.distance_hint,source:g.source,cam:g.cam_stats&&{w:g.cam_stats.width,h:g.cam_stats.height,frames_seen:g.cam_stats.seen,faces:g.cam_stats.faces}},null,1);o.style.display=$("dbgChk").checked?"block":"none";}
+function showDbg(g){const o=$("dbgOut");o.textContent=JSON.stringify({status:g.status,posterior:g.posterior,evidence:g.evidence,vetoes:g.vetoes,reasons:g.reasons,challenge:g.challenge,frames_used:g.frames_used,glint_arc_ratio:g.glint_arc_ratio,viseme_match:g.viseme_match,distance_hint:g.distance_hint,source:g.source,flash:g.flash,cam:g.cam_stats&&{w:g.cam_stats.width,h:g.cam_stats.height,frames_seen:g.cam_stats.seen,faces:g.cam_stats.faces}},null,1);o.style.display=$("dbgChk").checked?"block":"none";}
 function calBody(){return $("calChk").checked?{calibration_consent:true,calibration_label:$("calLbl").value}:{};}
 $("dbgChk").onchange=()=>{$("dbgOut").style.display=$("dbgChk").checked?"block":"none";};
 $("simKind").addEventListener("change",()=>{if($("simKind").value==="camera"){$("consentChk").checked=false;$("camStat").textContent="Tick consent to enable the live camera. Nothing is stored; camera stops after ~9 s.";}});
@@ -1020,11 +1021,12 @@ $("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
       if(!window.AuraCam)throw new CamErr(window.AuraCamErr||"camera module not loaded");
       $("chPhrase").innerHTML="Say: <b style='font-size:15px'>"+esc(ch.phrase)+"</b> · after the prompt, speak it clearly";
       try{if(window.speechSynthesis){const u=new SpeechSynthesisUtterance("Please say: "+ch.phrase);u.rate=1;speechSynthesis.speak(u);}}catch{}
-      let cap;try{cap=await AuraCam.capture((ch.prompt_end_ms||2700)+6000,{t0,mic:$("micChk").checked,onStatus:m=>$("camStat").textContent=m});}
+      const useFlash=$("consentChk").checked&&$("flashChk").checked&&!!ch.flash;
+      let cap;try{cap=await AuraCam.capture((ch.prompt_end_ms||2700)+6000,{t0,mic:$("micChk").checked,flash:(useFlash?ch.flash:null),onStatus:m=>$("camStat").textContent=m});}
       catch(e){throw new CamErr(e.message||String(e));}
       if(cap.frames.length<30)throw new CamErr("No face found ("+cap.stats.faces+"/"+cap.stats.seen+" frames had a face). Face the camera in good light.");
       btn.textContent="Scoring…";
-      g=await post("/api/aura/scan",{consent:true,frames:cap.frames,nonce:ch.nonce,...calBody()});cap.frames.length=0;g.cam_stats=cap.stats;
+      g=await post("/api/aura/scan",{consent:true,frames:cap.frames,nonce:ch.nonce,flash_shown:useFlash,...calBody()});cap.frames.length=0;g.cam_stats=cap.stats;
     }else{
       $("chPhrase").innerHTML="Challenge: <b>"+esc(ch.phrase)+"</b> · nonce "+ch.nonce.slice(0,8)+"… (simulated response)";
       g=await post("/api/aura/scan",{consent:true,simulate:$("simKind").value,nonce:ch.nonce,...calBody()});}
@@ -1033,7 +1035,7 @@ $("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
     $("verdict").className="verdict "+(g.aura_passed?"pass":"fail");$("fusedTxt").textContent=(+g.posterior).toFixed(3);$("fg").style.strokeDashoffset=207.3*(1-Math.min(1,g.posterior));
     $("aPill").className="pill "+(g.aura_passed?"ok":"no");$("aPill").textContent=g.aura_passed?"PASS · scan":"FAIL · scan";
     $("k-g").textContent=(+g.glint_score).toFixed(3);$("k-l").textContent=(+g.lipsync_score).toFixed(3);$("k-t").textContent=g.tier;$("k-w").textContent="Σ LLR "+(+g.evidence.total_llr).toFixed(2);
-    $("aReason").textContent=(g.vetoes.length?"Vetoes: "+g.vetoes.join(", "):"No vetoes")+" · challenge "+(g.challenge?(g.challenge.match_ratio*100).toFixed(0)+"% "+g.challenge.codes.join(","):"—")+(g.simulated?" · SIMULATED "+g.simulated:" · LIVE CAMERA");
+    $("aReason").textContent=(g.vetoes.length?"Vetoes: "+g.vetoes.join(", "):"No vetoes")+" · challenge "+(g.challenge?(g.challenge.match_ratio*100).toFixed(0)+"% "+g.challenge.codes.join(","):"—")+(g.flash?" · flash corr "+(g.flash.corr||[]).join("/")+" lag "+g.flash.lag_ms+"ms ("+(g.evidence.flash_llr>=0?"+":"")+(g.evidence.flash_llr??"—")+")":"")+(g.simulated?" · SIMULATED "+g.simulated:" · LIVE CAMERA");
     btn.textContent="Triaging…";
     const t=await post("/api/triage",{report,tier,mode:state.live?"live":"demo",scan_id:g.scan_id});
     const r=t.result,demo=t.engine!=="live";

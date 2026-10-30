@@ -32,7 +32,8 @@ sys.path.insert(0, os.path.join(ROOT, "..", "src"))
 
 import aura_scan as S  # noqa: E402
 import aura_challenge as C  # noqa: E402
-import aura_webcam as W  # noqa: E402
+import aura_webcam as W
+import aura_flash as FL  # noqa: E402
 
 try:
     import agent  # needs `openai` (requirements.txt); only required for live mode
@@ -178,9 +179,13 @@ def do_challenge(body):
         return 403, {"error": "consent=true required"}
     ch = SESSION.issue(0)
     ch.prompt_end_ms = 450 * (len(ch.words) + 2)  # estimated end of spoken/displayed prompt (scan clock)
+    # Screen-flash colour sequence, bound to this nonce (random per challenge; AURA_FLASH_SEED fixes it for tests).
+    seed = os.environ.get("AURA_FLASH_SEED")
+    ch.flash = FL.make_sequence(int(seed) if seed else None)
     tts = C.speak("Please say: " + ch.phrase) if body.get("tts") else {"spoken": False, "engine": None,
                                                                         "display_text": "Please say: " + ch.phrase}
-    return 200, {"nonce": ch.nonce, "phrase": ch.phrase, "prompt_end_ms": ch.prompt_end_ms, "tts": tts}
+    return 200, {"nonce": ch.nonce, "phrase": ch.phrase, "prompt_end_ms": ch.prompt_end_ms, "tts": tts,
+                 "flash": {"seq": ch.flash, "fade_ms": FL.FADE_MS}}
 
 
 def do_scan(body):
@@ -207,6 +212,7 @@ def do_scan(body):
     nonce = body.get("nonce")
     ch = SESSION._active if nonce and SESSION._active and SESSION._active.nonce == nonce else None
     camera_feats = None
+    flash_seq = getattr(ch, "flash", None) if (ch and not kind and body.get("flash_shown") is True) else None
     if not kind:
         # Webcam: challenge lip features come from the same frames (computed server-side);
         # the silent scan scores the 5 s window starting when the prompt ends (user speaking).
@@ -237,10 +243,11 @@ def do_scan(body):
         C.apply_to_scan(r, ch_out, calibration=CAL)
     if extras:
         scan_ex = [e for e in extras if not ch or e["t_ms"] >= ch.prompt_end_ms] or extras
-        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL)
+        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL, flash_seq=flash_seq)
         extras.clear()
     g = gate_summary(r, ch_out, kind)
     g["source"] = "simulated" if kind else "camera"
+    g["flash"] = getattr(r, "flash_info", None)  # scalar correlation summary only
     if camera_feats is not None:
         camera_feats.clear()
     if cal_label:

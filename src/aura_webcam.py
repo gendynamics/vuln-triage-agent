@@ -499,7 +499,8 @@ def extras_from_json(arr: List[dict]) -> List[dict]:
     return out
 
 
-def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[dict]] = None, calibration=None):
+def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[dict]] = None, calibration=None,
+                          flash_seq=None):
     """Run every webcam channel on the scan window and fold it in."""
     llr, rs = geometry_channel(scan_extras)
     apply_channel(r, "geometry_llr", llr, rs, calibration=calibration)
@@ -511,4 +512,9 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
     apply_channel(r, "planarity_llr", llr, rs, vs, calibration=calibration)
     llr, rs, vs = rppg_channel(all_extras or scan_extras)  # whole capture: pulse needs >= 5 s
     apply_channel(r, "rppg_llr", llr, rs, vs, calibration=calibration)
+    if flash_seq:  # screen-flash colour challenge (only when the browser actually showed it)
+        from aura_flash import flash_channel
+        llr, rs, vs, info = flash_channel(all_extras or scan_extras, flash_seq)
+        apply_channel(r, "flash_llr", llr, rs, vs, calibration=calibration)
+        r.flash_info = info
     return r

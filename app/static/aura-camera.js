@@ -38,7 +38,25 @@ function pose(m) {
 }
 
 /** Capture `durationMs` of webcam frames. Requests permission (browser prompt is never suppressed). */
-export async function capture(durationMs, { t0 = performance.now(), onStatus = () => {}, mic = false } = {}) {
+// Screen-flash colour challenge overlay. Photosensitivity: >= 450 ms per colour (<= 2.2 transitions/s),
+// 100 ms fades, 55% opacity of moderate colours, no white/black strobing. Timed on the frames' t0 clock.
+export function runFlash(flash, t0) {
+  if (!flash || !flash.seq || !flash.seq.length) return () => {};
+  const d = document.createElement("div"), fade = flash.fade_ms || 100, timers = [];
+  d.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;opacity:0;transition:background-color ${fade}ms linear,opacity ${fade}ms linear;display:flex;align-items:flex-end;justify-content:center;font:600 14px system-ui;color:#fff;padding-bottom:24px`;
+  d.textContent = "Colour check · keep facing the screen";
+  document.body.appendChild(d);
+  const at = (ms, fn) => timers.push(setTimeout(fn, Math.max(0, ms - (performance.now() - t0))));
+  const el = performance.now() - t0; // segments already past are skipped (never burst-fire)
+  for (const s of flash.seq) if (s.start_ms + s.dur_ms > el + fade) at(s.start_ms, () => { d.style.backgroundColor = `rgb(${s.rgb.join(",")})`; d.style.opacity = "0.55"; });
+  const last = flash.seq[flash.seq.length - 1], end = last.start_ms + last.dur_ms;
+  at(end, () => { d.style.opacity = "0"; });
+  const kill = () => { timers.forEach(clearTimeout); d.remove(); };
+  at(end + fade + 50, kill);
+  return kill;
+}
+
+export async function capture(durationMs, { t0 = performance.now(), onStatus = () => {}, mic = false, flash = null } = {}) {
   const lm = await load();
   const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" }, audio: !!mic });
   const video = document.createElement("video");
@@ -54,6 +72,7 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
     audio = { ac, read() { an.getFloatTimeDomainData(buf); let e = 0; for (const v of buf) e += v * v; return Math.sqrt(e / buf.length); } };
   }
   const frames = [], stats = { seen: 0, faces: 0, width: W, height: H, yaw: [] };
+  const killFlash = runFlash(flash, t0); stats.flash = !!flash;
   let lastTime = -1;
   try {
     onStatus(`Camera active — liveness check in progress (${W}×${H})`);
@@ -93,7 +112,7 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
           let r = 0, g = 0, b = 0; for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
           const n = d.length / 4; return [+(r / n).toFixed(3), +(g / n).toFixed(3), +(b / n).toFixed(3)]; };
         const fh = [(P(10)[0] + P(151)[0]) / 2, (P(10)[1] + P(151)[1]) / 2];
-        f.rppg = { forehead: roi(fh), lcheek: roi(P(50)), rcheek: roi(P(280)) }; }
+        f.rppg = { forehead: roi(fh), lcheek: roi(P(50)), rcheek: roi(P(280)), bg: roi([hs + 2, hs + 2]) }; }
       f.iod_px = Math.hypot(P(468)[0] - P(473)[0], P(468)[1] - P(473)[1]);
       const ps = pose(r.facialTransformationMatrixes && r.facialTransformationMatrixes[0]);
       if (ps) { f.yaw = ps.yaw; f.pitch = ps.pitch; stats.yaw.push(ps.yaw); }
@@ -104,7 +123,7 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
       frames.push(f);
     }
   } finally {
-    stream.getTracks().forEach((t) => t.stop()); // stop camera (and mic) right after the window
+    killFlash(); stream.getTracks().forEach((t) => t.stop()); // stop camera (and mic) right after the window
     video.srcObject = null; cx.clearRect(0, 0, W, H);
     if (audio) audio.ac.close();
   }

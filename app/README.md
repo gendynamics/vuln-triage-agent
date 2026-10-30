@@ -102,3 +102,30 @@ The 1e-5 and 99.9% figures are design targets. Showing FAR ≤ 1e-5 takes about 
 Each channel adds an LLR to `total_llr`, and its codes show in the debug panel. `geometry_llr` scores lip-shape dynamics. `attention_llr` uses eyeLook/eyeBlink and adds `Inattentive` (soft fail) and `EyesClosed`. `consistency_llr` adds `FrameTeleport`, `BlendshapeJitter` (only at ≥20 fps) and `IrregularTiming`. `planarity_llr` fits a homography to 12 landmarks and vetoes `PlanarFace` once there is ≥8° of yaw (otherwise `PoseTooStatic3D`). `rppg_llr` (POS/CHROM, 0.7–4 Hz, 3 ROIs) vetoes `NoPulse` only in adequate light (otherwise `LowLight`) and needs ≥5 s at ≥10 fps (otherwise `RppgShort`).
 The browser sends only the rPPG ROI mean RGB and 12 sparse points. None of it is stored.
 How this compares with Face ID: these are liveness-only analogues of its attention, depth and anti-spoof checks, built on an RGB webcam. There is no IR dot projector or depth sensor, and there is **no identity matching or face template**. That makes the assurance much weaker, and every threshold here is an uncalibrated design value.
+
+### Screen-flash colour challenge (active light)
+
+In camera mode, with consent ticked and **Color challenge** on (the default), `/api/aura/challenge` returns
+`flash.seq`: 6 random colour segments of 450 ms each (red, green, blue, magenta, cyan and yellow, with no
+colour repeated back-to-back), starting 300 ms after t0 and bound to the nonce. The page shows them as a
+soft full-screen overlay during the first ~3 s, overlapping the spoken prompt. The browser sends only the
+mean RGB of the rPPG skin ROIs plus one background ROI per frame (no pixels), together with
+`flash_shown: true`. `src/aura_flash.py` computes chromaticity `x/(r+g+b)` and correlates each channel with
+the expected sequence at the best lag from 0 to 300 ms. It also checks lag consistency between the two
+halves of the sequence and reports the skin-vs-background response.
+
+| result | flash_llr |
+|---|---|
+| ≥2 channels corr ≥ 0.6, lag 0–300 ms, consistent | +3 |
+| match only at lag > 300 ms, or inconsistent | −1 `ColorLagMismatch` |
+| luma outside 25–235, or too few frames | 0 `FlashInconclusive` |
+| strong response that fits a different sequence | −3, veto `FlashMismatch` |
+| weak or no response in adequate light | −3 `NoColorReflection` |
+
+These thresholds are **uncalibrated design values**. `flash_llr` appears in the debug output, in records
+and calibration features (as a score only), and in the results line. `AURA_FLASH_SEED=<int>` fixes the
+sequence for debugging.
+
+**Photosensitivity:** at most ~2.2 colour changes per second (below the 3/s limit), 100 ms fades, 55%
+opacity over moderate colours, and no white/black strobe. Segments that were missed because the camera
+started late are skipped and never burst-fired. Untick **Color challenge** to disable it.
