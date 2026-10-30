@@ -168,6 +168,48 @@ def apply_channel(r, name: str, llr: float, reasons: Sequence[str] = (), vetoes:
     return r
 
 
+# ---------------- attention / gaze (Face ID "attention aware" analogue) ----------------
+ATT_MIN_FRAMES = 10
+
+
+def attention_features(extras: List[dict]) -> Optional[dict]:
+    """Per frame: horizontal gaze h = mean over eyes |lookIn - lookOut|, vertical v = |lookUp - lookDown|,
+    eyes open = mean(eyeBlinkL/R) < 0.5, head |yaw| <= 30 and |pitch| <= 25 degrees.
+    attentive frame = open AND h < 0.5 AND v < 0.5 AND head pose ok."""
+    rows = []
+    for e in extras:
+        b = e.get("blend") or {}
+        if "eyeLookInLeft" not in b:
+            continue
+        g = lambda k: float(b.get(k, 0.0))
+        h = (abs(g("eyeLookInLeft") - g("eyeLookOutLeft")) + abs(g("eyeLookInRight") - g("eyeLookOutRight"))) / 2
+        v = (abs(g("eyeLookUpLeft") - g("eyeLookDownLeft")) + abs(g("eyeLookUpRight") - g("eyeLookDownRight"))) / 2
+        closed = (g("eyeBlinkLeft") + g("eyeBlinkRight")) / 2 >= 0.5
+        pose_ok = abs(e.get("yaw") or 0.0) <= 30 and abs(e.get("pitch") or 0.0) <= 25
+        rows.append((h, v, closed, pose_ok))
+    if len(rows) < ATT_MIN_FRAMES:
+        return None
+    n = len(rows)
+    att = sum(1 for h, v, c, p in rows if not c and h < 0.5 and v < 0.5 and p) / n
+    return {"attentive_frac": att, "closed_frac": sum(1 for r in rows if r[2]) / n, "n": n}
+
+
+def attention_channel(extras: List[dict]) -> Tuple[float, List[str]]:
+    """LLR: attentive >= 60% of frames +0.5; < 30% -1.5 with soft-fail reason "Inattentive"
+    (also "EyesClosed" when eyes are shut in > 50% of frames). No data -> 0."""
+    f = attention_features(extras)
+    if f is None:
+        return 0.0, []
+    rs = []
+    if f["closed_frac"] > 0.5:
+        rs.append("EyesClosed")
+    if f["attentive_frac"] >= 0.6:
+        return 0.5, rs
+    if f["attentive_frac"] < 0.3:
+        return -1.5, rs + ["Inattentive"]
+    return 0.0, rs
+
+
 def extras_from_json(arr: List[dict]) -> List[dict]:
     out = []
     for f in arr:
@@ -188,4 +230,6 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
     """Run every webcam channel on the scan window and fold it in."""
     llr, rs = geometry_channel(scan_extras)
     apply_channel(r, "geometry_llr", llr, rs, calibration=calibration)
+    llr, rs = attention_channel(scan_extras)
+    apply_channel(r, "attention_llr", llr, rs, calibration=calibration)
     return r

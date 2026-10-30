@@ -84,3 +84,32 @@ class CalibrationToolTests(unittest.TestCase):
         jl = tmp_path / "c.jsonl"
         jl.write_text("\n".join(_json.dumps(r) for r in CT.synthetic(40)) + "\n")
         assert CT.main(["--in", str(jl), "--out", str(tmp_path / "o.cfg")]) == 0 and (tmp_path / "o.cfg").exists()
+
+
+def _att_frames(n=40, look=0.1, blink=0.05, yaw=0.0, seed=0):
+    rng = random.Random(seed); out = []
+    for i in range(n):
+        j = lambda: max(0.0, min(1.0, rng.gauss(0, 0.03)))
+        b = {k: j() for k in ("eyeLookInLeft", "eyeLookUpLeft", "eyeLookDownLeft", "eyeLookInRight", "eyeLookUpRight", "eyeLookDownRight")}
+        b["eyeLookOutLeft"] = look + j(); b["eyeLookOutRight"] = j()
+        b["eyeLookInRight"] = look + j()  # both eyes looking to the same side
+        b["eyeBlinkLeft"] = b["eyeBlinkRight"] = blink
+        out.append({"t_ms": i * 33, "blend": b, "yaw": yaw, "pitch": 0.0})
+    return out
+
+
+class AttentionTests(unittest.TestCase):
+    def test_attentive(self):
+        self.assertEqual(W.attention_channel(_att_frames()), (0.5, []))
+
+    def test_looking_away(self):
+        llr, rs = W.attention_channel(_att_frames(look=0.8))
+        self.assertLess(llr, 0); self.assertIn("Inattentive", rs)
+
+    def test_eyes_closed(self):
+        llr, rs = W.attention_channel(_att_frames(blink=0.9))
+        self.assertIn("EyesClosed", rs); self.assertIn("Inattentive", rs)
+
+    def test_head_turned_and_no_data(self):
+        self.assertIn("Inattentive", W.attention_channel(_att_frames(yaw=50))[1])
+        self.assertEqual(W.attention_channel([{"t_ms": 0, "blend": {"jawOpen": 0.1}}] * 30), (0.0, []))
