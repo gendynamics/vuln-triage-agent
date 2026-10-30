@@ -7,6 +7,9 @@
 
 use serde::Serialize;
 
+pub mod scan;
+pub mod challenge;
+
 /// Real-eye glint-arc ratio ~0.5; flat photo = 1.0.
 pub const REAL_GLINT_ARC_RATIO: f64 = 0.5;
 pub const PHOTO_GLINT_ARC_RATIO: f64 = 1.0;

@@ -68,9 +68,24 @@ def _validate(resp: dict) -> dict:
     return resp
 
 
+def scan_gate(aura_scan) -> dict | None:
+    """Blocked response if a silent-scan result (ScanResult or dict) failed, else None."""
+    if aura_scan is None:
+        return None
+    d = aura_scan.to_dict() if hasattr(aura_scan, "to_dict") else dict(aura_scan)
+    passed = d.get("aura_passed", d.get("status") == "pass")
+    if passed:
+        return None
+    return {"aura_gate": d, "triage": None, "error": "AURA liveness scan failed"}
+
+
 def triage(report: str, tier: str = "ultra",
-           aura: dict | None = None) -> dict:
-    """Triage a vulnerability report. AURA gate runs first if readings given."""
+           aura: dict | None = None, aura_scan=None) -> dict:
+    """Triage a vulnerability report. AURA gate runs first if readings given.
+    `aura_scan` (an aura_scan.ScanResult or its dict) blocks triage when failed."""
+    blocked = scan_gate(aura_scan)
+    if blocked:
+        return blocked
     if aura:
         verdict = verify_submission(**aura)
         if not verdict.passed:
@@ -98,6 +113,8 @@ def triage(report: str, tier: str = "ultra",
     resp = _validate(json.loads(raw))
     if aura:
         resp["aura_gate"] = verdict.to_dict()
+    if aura_scan is not None:
+        resp["aura_scan"] = (aura_scan.to_dict() if hasattr(aura_scan, "to_dict") else dict(aura_scan))
     return resp
 
 
