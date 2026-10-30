@@ -44,6 +44,26 @@ class TestServer(unittest.TestCase):
         self.assertEqual(A.demo_result("SSRF to 169.254.169.254")["attack_technique"], "T1552.005 - Cloud Instance Metadata API")
 
 
+    def test_calibration_recording(self):
+        """Opt-in calibration recording writes label + scalar evidence only; refuses without consent/label."""
+        import json
+        old = A.CAL_PATH
+        A.CAL_PATH = os.path.join(tempfile.mkdtemp(), "calibration.jsonl")
+        try:
+            code, _ = A.do_scan({"consent": True, "simulate": "Live", "calibration_label": "live"})
+            self.assertEqual(code, 400)  # no calibration_consent
+            code, _ = A.do_scan({"consent": True, "simulate": "Live", "calibration_consent": True, "calibration_label": "cat"})
+            self.assertEqual(code, 400)
+            code, g = A.do_scan({"consent": True, "simulate": "ScreenMoire", "calibration_consent": True, "calibration_label": "screen_replay"})
+            self.assertEqual(code, 200)
+            rows = [json.loads(l) for l in open(A.CAL_PATH)]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(set(rows[0]), {"label", "source", "evidence", "vetoes", "reasons", "frames_used"})
+            self.assertEqual(rows[0]["label"], "screen_replay")
+            self.assertNotIn("pixels", open(A.CAL_PATH).read())
+        finally:
+            A.CAL_PATH = old
+
     def test_webcam_shaped_frames(self):
         """Frames as sent by app/static/aura-camera.js (pixel coords + extra keys) are accepted and not persisted."""
         import aura_scan as S

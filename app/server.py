@@ -50,6 +50,21 @@ RECORDS: list = []
 PENDING: dict = {}  # scan_id -> gate summary (in memory, consumed by /api/triage)
 # One challenge session per server process (demo scope; spent nonces kept in memory only).
 SESSION = C.ChallengeSession(consent=True)
+# Calibration (tools/calibrate.py output). Absent -> identity map, results marked calibrated=false.
+CAL_CFG = os.environ.get("AURA_CALIBRATION", os.path.join(DATA, "calibration.cfg"))
+CAL_PATH = os.path.join(DATA, "calibration.jsonl")
+CAL_LABELS = ("live", "printed_photo", "screen_replay", "deepfake", "mask")
+CAL = S.Calibration.from_config(open(CAL_CFG).read()) if os.path.exists(CAL_CFG) else S.Calibration()
+
+
+def record_calibration(label, g):
+    """Consented calibration recording: label + evidence/LLR scalars only (no images, landmarks, ids)."""
+    row = {"label": label, "source": g.get("source"), "evidence": g.get("evidence"),
+           "vetoes": g.get("vetoes"), "reasons": g.get("reasons"), "frames_used": g.get("frames_used")}
+    with LOCK:
+        os.makedirs(DATA, exist_ok=True)
+        with open(CAL_PATH, "a") as fh:
+            fh.write(json.dumps(row) + "\n")
 
 # ---------------- demo keyword engine (port of the dashboard's demoResult) ----------------
 RULES = [
@@ -183,6 +198,9 @@ def do_scan(body):
             return 400, {"error": f"bad frames: {e}"}
     else:
         return 400, {"error": "provide simulate=<kind> or frames=[...]"}
+    cal_label = body.get("calibration_label")
+    if cal_label is not None and (cal_label not in CAL_LABELS or body.get("calibration_consent") is not True):
+        return 400, {"error": "calibration recording needs calibration_consent=true and a label", "labels": list(CAL_LABELS)}
     extras = W.extras_from_json(body["frames"]) if not kind else None
     body.pop("frames", None)  # raw webcam frames (eye crops) live only in this call
     tier = body.get("tier_gate", "high_assurance")
@@ -203,7 +221,7 @@ def do_scan(body):
             later = [f for f in frames if f.t_ms >= ch.prompt_end_ms]
             if len(later) >= S.MIN_FRAMES:
                 frames = later
-    r = S.scan_window(frames, consent=True, tier=tier)  # zeroes pixels after scoring
+    r = S.scan_window(frames, consent=True, tier=tier, calibration=CAL)  # zeroes pixels after scoring
     frames = None
     ch_out = None
     if nonce:
@@ -216,15 +234,18 @@ def do_scan(body):
             feats = camera_feats or []
         ch_out = SESSION.verify(nonce, feats)
         feats.clear()
-        C.apply_to_scan(r, ch_out)
+        C.apply_to_scan(r, ch_out, calibration=CAL)
     if extras:
         scan_ex = [e for e in extras if not ch or e["t_ms"] >= ch.prompt_end_ms] or extras
-        W.apply_webcam_channels(r, scan_ex, extras)
+        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL)
         extras.clear()
     g = gate_summary(r, ch_out, kind)
     g["source"] = "simulated" if kind else "camera"
     if camera_feats is not None:
         camera_feats.clear()
+    if cal_label:
+        record_calibration(cal_label, g)
+        g["calibration_recorded"] = cal_label
     sid = uuid.uuid4().hex
     with LOCK:
         PENDING[sid] = g

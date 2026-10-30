@@ -88,3 +88,11 @@ indicator and permission prompt must stay in effect.
 **Limits**: simulated inputs only in the UI; thresholds uncalibrated; 0.999 / 1e-5 are
 design targets, not measured accuracy; single-process in-memory challenge session;
 localhost only, no auth.
+
+## Calibration (opt-in)
+
+Tick **Calibration recording**, pick the true label (live / printed photo / screen replay / deepfake / mask) and run a scan.
+Only the label and the evidence LLR scalars, vetoes and reasons are appended to `app/data/calibration.jsonl`. No images, landmarks or identifiers are saved.
+Then run `python tools/calibrate.py` (add `--isotonic` if you have plenty of data). It runs a Platt fit with 5-fold CV and prints FAR/FRR at the 0.85 and 0.999 tiers, with a Clopper-Pearson 95% upper bound on FAR.
+It writes `app/data/calibration.cfg`, which the server loads at startup (`AURA_CALIBRATION=path` overrides it). Until then every result says `calibrated: false`.
+The 1e-5 and 99.9% figures are design targets. Showing FAR ≤ 1e-5 takes about 300,000 spoof attempts with zero accepts (rule of three). FAR ≤ 1e-6 takes about 3,000,000. FRR ≤ 0.1% takes about 3,000 live attempts.

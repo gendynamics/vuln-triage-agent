@@ -184,8 +184,8 @@ def extras_from_json(arr: List[dict]) -> List[dict]:
     return out
 
 
-def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[dict]] = None):
+def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[dict]] = None, calibration=None):
     """Run every webcam channel on the scan window and fold it in."""
     llr, rs = geometry_channel(scan_extras)
-    apply_channel(r, "geometry_llr", llr, rs)
+    apply_channel(r, "geometry_llr", llr, rs, calibration=calibration)
     return r

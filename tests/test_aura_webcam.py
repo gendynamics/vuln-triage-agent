@@ -51,3 +51,36 @@ class TestGeometry(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------- calibration tool ----------------
+import importlib.util as _ilu, os as _os, json as _json
+_spec = _ilu.spec_from_file_location("calibrate", _os.path.join(_os.path.dirname(__file__), "..", "tools", "calibrate.py"))
+CT = _ilu.module_from_spec(_spec); _spec.loader.exec_module(CT)
+
+
+class CalibrationToolTests(unittest.TestCase):
+    def test_platt_recovers_gaussian_optimum(self):
+        res = CT.evaluate(CT.synthetic(2000, seed=3))
+        # live N(14,5), spoof N(-4,5): optimal a = 18/25 = 0.72, b = -(196-16)/50 = -3.6
+        assert abs(res["platt_a"] - 0.72) < 0.1 and abs(res["platt_b"] + 3.6) < 0.6
+        assert res["cv"]["roc_auc"] > 0.98
+
+
+    def test_clopper_pearson_rule_of_three(self):
+        assert abs(CT.clopper_pearson_upper(0, 300000) - 1e-5) < 1e-6
+        assert abs(CT.clopper_pearson_upper(0, 3000) - 1e-3) < 1e-4
+        assert CT.clopper_pearson_upper(5, 100) > 0.05
+
+
+    def test_cfg_roundtrip_and_server_recording(self):
+        import tempfile, pathlib; tmp_path = pathlib.Path(tempfile.mkdtemp())
+        import aura_scan as S
+        res = CT.evaluate(CT.synthetic(200), isotonic=True)
+        cfg = tmp_path / "c.cfg"; CT.write_cfg(res, str(cfg))
+        cal = S.Calibration.from_config(cfg.read_text())
+        assert cal.calibrated and abs(cal.platt_a - res["platt_a"]) < 1e-5 and len(cal.isotonic) >= 2
+        assert cal.posterior(30) > 0.99 and cal.posterior(-20) < 0.01
+        jl = tmp_path / "c.jsonl"
+        jl.write_text("\n".join(_json.dumps(r) for r in CT.synthetic(40)) + "\n")
+        assert CT.main(["--in", str(jl), "--out", str(tmp_path / "o.cfg")]) == 0 and (tmp_path / "o.cfg").exists()
