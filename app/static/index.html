@@ -997,6 +997,11 @@ async function loadRecords(){if(!BE.up)return;try{const {records}=await (await f
  }catch(e){}}
 $("recRefresh").onclick=loadRecords;
 class CamErr extends Error{}
+function showCamReject(msg){const nf=/No face found/.test(msg);
+  $("verdict").className="verdict fail";$("fusedTxt").textContent="—";$("fg").style.strokeDashoffset=207.3;$("fg").style.stroke="#ff4a5a";
+  $("aPill").className="pill no";$("aPill").textContent=nf?"✕ Rejected · no face":"✕ Rejected · camera error";
+  $("aReason").textContent=(nf?"Biometric gate FAILED — no face detected. ":"Biometric gate FAILED — camera scan did not complete. ")+msg+" Submission not verified.";
+  $("flowTs").textContent="rejected at AURA gate · "+stamp();}
 function showDbg(g){const o=$("dbgOut");o.textContent=JSON.stringify({status:g.status,posterior:g.posterior,evidence:g.evidence,vetoes:g.vetoes,reasons:g.reasons,challenge:g.challenge,frames_used:g.frames_used,glint_arc_ratio:g.glint_arc_ratio,viseme_match:g.viseme_match,distance_hint:g.distance_hint,source:g.source,cam:g.cam_stats&&{w:g.cam_stats.width,h:g.cam_stats.height,frames_seen:g.cam_stats.seen,faces:g.cam_stats.faces}},null,1);o.style.display=$("dbgChk").checked?"block":"none";}
 function calBody(){return $("calChk").checked?{calibration_consent:true,calibration_label:$("calLbl").value}:{};}
 $("dbgChk").onchange=()=>{$("dbgOut").style.display=$("dbgChk").checked?"block":"none";};
@@ -1041,7 +1046,7 @@ $("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
       const banner=demo?`<div class="banner demo">◆ Backend demo engine (keyword heuristics) — AURA gate passed (${g.simulated?"SIMULATED scan":"live camera scan"})${r.live_error?" · live failed: "+esc(r.live_error):""}</div>`:`<div class="banner live">● Live — Nebius Token Factory via backend</div>`;
       $("flowTs").textContent="completed · "+stamp();$("outTs").textContent=stamp()+(demo?" · demo":" · live");renderOut(r,banner,valid,r.validation_error||"");renderSession();toast(`✓ ${r.severity} · CVSS ${r.cvss_score} · record ${t.record.id}`,"ok");}
     await loadRecords();
-  }catch(e){console.error(e);if(e instanceof CamErr){$("camStat").textContent="⚠ "+e.message;toast("Live camera: "+e.message+" — simulated mode still available","warn");state.phase="idle";return;}toast("Backend error: "+e.message+" — falling back to offline demo","warn");BE.up=false;btn.disabled=false;btn.textContent="▶ Run triage";return offlineRun();}
+  }catch(e){console.error(e);if(e instanceof CamErr){$("camStat").textContent="⚠ "+e.message;showCamReject(e.message);toast("Live camera: "+e.message+" — simulated mode still available","warn");state.phase="idle";return;}toast("Backend error: "+e.message+" — falling back to offline demo","warn");BE.up=false;btn.disabled=false;btn.textContent="▶ Run triage";return offlineRun();}
   finally{btn.disabled=false;btn.textContent="▶ Run triage";save();}};
 beCheck().then(loadRecords).then(()=>{const k=new URLSearchParams(location.search).get("autorun");if(k&&BE.up){$("simKind").value=k;if(new URLSearchParams(location.search).get("debug"))$("dbgChk").checked=true;$("runBtn").click();}});
 </script>
