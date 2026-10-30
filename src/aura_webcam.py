@@ -500,7 +500,7 @@ def extras_from_json(arr: List[dict]) -> List[dict]:
 
 
 def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[dict]] = None, calibration=None,
-                          flash_seq=None):
+                          flash_seq=None, pad_crops=None, pad_session=None):
     """Run every webcam channel on the scan window and fold it in."""
     llr, rs = geometry_channel(scan_extras)
     apply_channel(r, "geometry_llr", llr, rs, calibration=calibration)
@@ -517,4 +517,9 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
         llr, rs, vs, info = flash_channel(all_extras or scan_extras, flash_seq)
         apply_channel(r, "flash_llr", llr, rs, vs, calibration=calibration)
         r.flash_info = info
+    if pad_crops is not None:  # pretrained PAD model on a few sampled face crops (uncalibrated)
+        from aura_pad import pad_channel
+        llr, rs, vs, info = pad_channel(pad_crops, session=pad_session)
+        apply_channel(r, "pad_llr", llr, rs, vs, calibration=calibration)
+        r.pad_info = info
     return r

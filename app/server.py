@@ -207,6 +207,9 @@ def do_scan(body):
     if cal_label is not None and (cal_label not in CAL_LABELS or body.get("calibration_consent") is not True):
         return 400, {"error": "calibration recording needs calibration_consent=true and a label", "labels": list(CAL_LABELS)}
     extras = W.extras_from_json(body["frames"]) if not kind else None
+    pad_crops = body.pop("pad_crops", None) if not kind else None  # 80x80 face crops, this call only
+    if pad_crops is not None and not isinstance(pad_crops, list):
+        pad_crops = []
     body.pop("frames", None)  # raw webcam frames (eye crops) live only in this call
     tier = body.get("tier_gate", "high_assurance")
     nonce = body.get("nonce")
@@ -243,11 +246,17 @@ def do_scan(body):
         C.apply_to_scan(r, ch_out, calibration=CAL)
     if extras:
         scan_ex = [e for e in extras if not ch or e["t_ms"] >= ch.prompt_end_ms] or extras
-        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL, flash_seq=flash_seq)
+        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL, flash_seq=flash_seq, pad_crops=pad_crops)
         extras.clear()
+    if pad_crops:
+        for c in pad_crops:
+            if isinstance(c, list):
+                c.clear()
+        pad_crops.clear()
     g = gate_summary(r, ch_out, kind)
     g["source"] = "simulated" if kind else "camera"
     g["flash"] = getattr(r, "flash_info", None)  # scalar correlation summary only
+    g["pad"] = getattr(r, "pad_info", None)  # PAD scores only, no pixels
     if camera_feats is not None:
         camera_feats.clear()
     if cal_label:
@@ -376,6 +385,8 @@ class H(BaseHTTPRequestHandler):
 
 def main():
     load_records()
+    import aura_pad
+    threading.Thread(target=aura_pad.load_model, daemon=True).start()  # warm PAD model; failure -> channel inconclusive
     port = int(os.environ.get("PORT", "8000"))
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     print(f"VulnTriage + AURA on http://localhost:{port}  (live mode: {'on' if os.environ.get('NEBIUS_API_KEY') else 'off — demo engine'})")

@@ -105,3 +105,16 @@ Recognized words may be spoken back once, only inside the same consented session
 **Accuracy.** 99.9% and 1e-5 are *design targets*, not measured accuracy. All thresholds
 are hand-set and uncalibrated (calibration hook: `Calibration::from_config`). The eval
 harness (`cargo run --release --example eval`) reports synthetic FAR/FRR only.
+
+**Pretrained PAD channel** (`src/aura_pad.py`). In camera mode the browser samples up to 5 face crops,
+about 1 s apart (80×80 BGR at 2.7× the face box). They are sent once with the scan, scored on the server with
+onnxruntime, then zeroed. Nothing is stored and nothing is identity-matched. The model is **MiniFASNetV2 (2.7_80x80)** from
+[minivision-ai/Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing)
+(Apache-2.0), using the ONNX export at
+[garciafido/minifasnet-v2-anti-spoofing-onnx](https://huggingface.co/garciafido/minifasnet-v2-anti-spoofing-onnx)
+(Apache-2.0, 1.7 MB). It is downloaded at runtime to `~/.cache/vulntriage/` and SHA-256 checked, not vendored.
+Upstream doesn't document its training data, so we make no claim about it (not CelebA-Spoof/OULU/SiW).
+The mean live probability becomes `pad_llr = clip(0.75·logit(p), ±3)` in the same LLR sum as the other channels.
+`PADSpoof` vetoes only when every one of ≥ 3 crops has p_live < 0.05. With no crops, no onnxruntime or no model, the result is
+`PADInconclusive`, which contributes 0, and the other channels still run. **Uncalibrated**: on our own recorded test videos, the scores
+varied widely between real-person clips (mean p_live 0.03–1.0), so treat this channel as weak evidence.

@@ -71,6 +71,9 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
     const buf = new Float32Array(an.fftSize);
     audio = { ac, read() { an.getFloatTimeDomainData(buf); let e = 0; for (const v of buf) e += v * v; return Math.sqrt(e / buf.length); } };
   }
+  // PAD crops: <= 5 face crops (80x80 BGR, 2.7x face box), ~1 s apart, sent once with the scan, never stored.
+  const padCv = new OffscreenCanvas(80, 80), padCx = padCv.getContext("2d", { willReadFrequently: true });
+  const padCrops = []; let padNext = 500;
   const frames = [], stats = { seen: 0, faces: 0, width: W, height: H, yaw: [] };
   const killFlash = runFlash(flash, t0); stats.flash = !!flash;
   let lastTime = -1;
@@ -119,12 +122,22 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
       if (r.faceBlendshapes && r.faceBlendshapes[0]) {
         f.blend = {}; for (const c of r.faceBlendshapes[0].categories) if (BLEND_KEEP.includes(c.categoryName)) f.blend[c.categoryName] = +c.score.toFixed(4);
       }
+      if (padCrops.length < 5 && f.t_ms >= padNext) {
+        padNext = f.t_ms + 1000;
+        let x0 = W, y0 = H, x1 = 0, y1 = 0; for (const q of L) { x0 = Math.min(x0, q.x * W); x1 = Math.max(x1, q.x * W); y0 = Math.min(y0, q.y * H); y1 = Math.max(y1, q.y * H); }
+        const bw = x1 - x0, bh = y1 - y0, sc = Math.min(2.7, (H - 1) / bh, (W - 1) / bw), cxm = (x0 + x1) / 2, cym = (y0 + y1) / 2;
+        const sx = Math.max(0, cxm - bw * sc / 2), sy = Math.max(0, cym - bh * sc / 2), sw = Math.min(W - sx, bw * sc), sh = Math.min(H - sy, bh * sc);
+        padCx.drawImage(cv, sx, sy, sw, sh, 0, 0, 80, 80);
+        const d = padCx.getImageData(0, 0, 80, 80).data, px = new Array(80 * 80 * 3);
+        for (let i = 0, j = 0; i < d.length; i += 4, j += 3) { px[j] = d[i + 2]; px[j + 1] = d[i + 1]; px[j + 2] = d[i]; } // RGBA -> BGR
+        padCrops.push(px);
+      }
       if (audio) f.audio_level = audio.read();
       frames.push(f);
     }
   } finally {
     killFlash(); stream.getTracks().forEach((t) => t.stop()); // stop camera (and mic) right after the window
-    video.srcObject = null; cx.clearRect(0, 0, W, H);
+    video.srcObject = null; cx.clearRect(0, 0, W, H); padCx.clearRect(0, 0, 80, 80);
     if (audio) audio.ac.close();
   }
   if (audio && frames.length) { // normalize energy envelope to 0..1 → audio_openness (A/V sync channel)
@@ -132,5 +145,6 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
     frames.forEach((f) => { f.audio_openness = f.audio_level / mx; delete f.audio_level; });
   }
   onStatus(`Camera stopped · ${stats.faces}/${stats.seen} frames had a face`);
-  return { frames, stats };
+  stats.pad_crops = padCrops.length;
+  return { frames, stats, padCrops };
 }

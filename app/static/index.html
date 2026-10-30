@@ -1026,7 +1026,7 @@ $("runBtn").onclick=async()=>{const btn=$("runBtn");if(btn.disabled)return;
       catch(e){throw new CamErr(e.message||String(e));}
       if(cap.frames.length<30)throw new CamErr("No face found ("+cap.stats.faces+"/"+cap.stats.seen+" frames had a face). Face the camera in good light.");
       btn.textContent="Scoring…";
-      g=await post("/api/aura/scan",{consent:true,frames:cap.frames,nonce:ch.nonce,flash_shown:useFlash,...calBody()});cap.frames.length=0;g.cam_stats=cap.stats;
+      g=await post("/api/aura/scan",{consent:true,frames:cap.frames,pad_crops:cap.padCrops||[],nonce:ch.nonce,flash_shown:useFlash,...calBody()});cap.frames.length=0;if(cap.padCrops)cap.padCrops.length=0;g.cam_stats=cap.stats;
     }else{
       $("chPhrase").innerHTML="Challenge: <b>"+esc(ch.phrase)+"</b> · nonce "+ch.nonce.slice(0,8)+"… (simulated response)";
       g=await post("/api/aura/scan",{consent:true,simulate:$("simKind").value,nonce:ch.nonce,...calBody()});}
