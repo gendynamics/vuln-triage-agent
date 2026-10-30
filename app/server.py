@@ -32,6 +32,8 @@ sys.path.insert(0, os.path.join(ROOT, "..", "src"))
 
 import aura_scan as S  # noqa: E402
 import aura_challenge as C  # noqa: E402
+import aura_webcam as W
+import aura_flash as FL  # noqa: E402
 
 try:
     import agent  # needs `openai` (requirements.txt); only required for live mode
@@ -49,6 +51,21 @@ RECORDS: list = []
 PENDING: dict = {}  # scan_id -> gate summary (in memory, consumed by /api/triage)
 # One challenge session per server process (demo scope; spent nonces kept in memory only).
 SESSION = C.ChallengeSession(consent=True)
+# Calibration (tools/calibrate.py output). Absent -> identity map, results marked calibrated=false.
+CAL_CFG = os.environ.get("AURA_CALIBRATION", os.path.join(DATA, "calibration.cfg"))
+CAL_PATH = os.path.join(DATA, "calibration.jsonl")
+CAL_LABELS = ("live", "printed_photo", "screen_replay", "deepfake", "mask")
+CAL = S.Calibration.from_config(open(CAL_CFG).read()) if os.path.exists(CAL_CFG) else S.Calibration()
+
+
+def record_calibration(label, g):
+    """Consented calibration recording: label + evidence/LLR scalars only (no images, landmarks, ids)."""
+    row = {"label": label, "source": g.get("source"), "evidence": g.get("evidence"),
+           "vetoes": g.get("vetoes"), "reasons": g.get("reasons"), "frames_used": g.get("frames_used")}
+    with LOCK:
+        os.makedirs(DATA, exist_ok=True)
+        with open(CAL_PATH, "a") as fh:
+            fh.write(json.dumps(row) + "\n")
 
 # ---------------- demo keyword engine (port of the dashboard's demoResult) ----------------
 RULES = [
@@ -162,9 +179,13 @@ def do_challenge(body):
         return 403, {"error": "consent=true required"}
     ch = SESSION.issue(0)
     ch.prompt_end_ms = 450 * (len(ch.words) + 2)  # estimated end of spoken/displayed prompt (scan clock)
+    # Screen-flash colour sequence, bound to this nonce (random per challenge; AURA_FLASH_SEED fixes it for tests).
+    seed = os.environ.get("AURA_FLASH_SEED")
+    ch.flash = FL.make_sequence(int(seed) if seed else None)
     tts = C.speak("Please say: " + ch.phrase) if body.get("tts") else {"spoken": False, "engine": None,
                                                                         "display_text": "Please say: " + ch.phrase}
-    return 200, {"nonce": ch.nonce, "phrase": ch.phrase, "prompt_end_ms": ch.prompt_end_ms, "tts": tts}
+    return 200, {"nonce": ch.nonce, "phrase": ch.phrase, "prompt_end_ms": ch.prompt_end_ms, "tts": tts,
+                 "flash": {"seq": ch.flash, "fade_ms": FL.FADE_MS}}
 
 
 def do_scan(body):
@@ -182,21 +203,65 @@ def do_scan(body):
             return 400, {"error": f"bad frames: {e}"}
     else:
         return 400, {"error": "provide simulate=<kind> or frames=[...]"}
+    cal_label = body.get("calibration_label")
+    if cal_label is not None and (cal_label not in CAL_LABELS or body.get("calibration_consent") is not True):
+        return 400, {"error": "calibration recording needs calibration_consent=true and a label", "labels": list(CAL_LABELS)}
+    extras = W.extras_from_json(body["frames"]) if not kind else None
+    pad_crops = body.pop("pad_crops", None) if not kind else None  # 80x80 face crops, this call only
+    if pad_crops is not None and not isinstance(pad_crops, list):
+        pad_crops = []
+    body.pop("frames", None)  # raw webcam frames (eye crops) live only in this call
     tier = body.get("tier_gate", "high_assurance")
-    r = S.scan_window(frames, consent=True, tier=tier)
-    ch_out = None
     nonce = body.get("nonce")
+    ch = SESSION._active if nonce and SESSION._active and SESSION._active.nonce == nonce else None
+    camera_feats = None
+    flash_seq = getattr(ch, "flash", None) if (ch and not kind and body.get("flash_shown") is True) else None
+    if not kind:
+        # Webcam: challenge lip features come from the same frames (computed server-side);
+        # the silent scan scores the 5 s window starting when the prompt ends (user speaking).
+        camera_feats = []
+        for f in frames:
+            m = S.build_lip_mesh(f.lips_outer, f.lips_inner)
+            if extras and len(extras) == len(frames):  # de-rolled lips (pose-normalised) for the challenge
+                o, i = W.deroll_lips(extras[len(camera_feats)])
+                m = S.build_lip_mesh(o, i)
+            camera_feats.append(C.LipFeat(f.t_ms, m["openness"], m["spread"]))
+        if ch and not body.get("challenge_response"):
+            later = [f for f in frames if f.t_ms >= ch.prompt_end_ms]
+            if len(later) >= S.MIN_FRAMES:
+                frames = later
+    r = S.scan_window(frames, consent=True, tier=tier, calibration=CAL)  # zeroes pixels after scoring
+    frames = None
+    ch_out = None
     if nonce:
-        ch = SESSION._active if SESSION._active and SESSION._active.nonce == nonce else None
         if kind and ch:
             feats = simulated_response(kind, ch)
-        else:
+        elif body.get("challenge_response"):
             feats = [C.LipFeat(int(x["t_ms"]), float(x["openness"]), float(x["spread"]))
                      for x in body.get("challenge_response", [])]
+        else:
+            feats = camera_feats or []
         ch_out = SESSION.verify(nonce, feats)
         feats.clear()
-        C.apply_to_scan(r, ch_out)
+        C.apply_to_scan(r, ch_out, calibration=CAL)
+    if extras:
+        scan_ex = [e for e in extras if not ch or e["t_ms"] >= ch.prompt_end_ms] or extras
+        W.apply_webcam_channels(r, scan_ex, extras, calibration=CAL, flash_seq=flash_seq, pad_crops=pad_crops)
+        extras.clear()
+    if pad_crops:
+        for c in pad_crops:
+            if isinstance(c, list):
+                c.clear()
+        pad_crops.clear()
     g = gate_summary(r, ch_out, kind)
+    g["source"] = "simulated" if kind else "camera"
+    g["flash"] = getattr(r, "flash_info", None)  # scalar correlation summary only
+    g["pad"] = getattr(r, "pad_info", None)  # PAD scores only, no pixels
+    if camera_feats is not None:
+        camera_feats.clear()
+    if cal_label:
+        record_calibration(cal_label, g)
+        g["calibration_recorded"] = cal_label
     sid = uuid.uuid4().hex
     with LOCK:
         PENDING[sid] = g
@@ -241,7 +306,7 @@ def make_record(gate, result, tier, engine, valid):
            "blocked": result.get("triage", 1) is None,
            "aura": None if gate is None else {k: gate[k] for k in (
                "posterior", "evidence", "legacy_score", "legacy_pass", "high_assurance_pass", "aura_passed",
-               "vetoes", "reasons", "calibrated", "simulated")},
+               "vetoes", "reasons", "calibrated", "simulated", "frames_used")},
            "challenge_match_ratio": None if not gate or not gate.get("challenge") else gate["challenge"]["match_ratio"],
            "triage": {k: v for k, v in result.items() if k != "aura_gate"}}
     with LOCK:
@@ -291,6 +356,9 @@ class H(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             with open(os.path.join(STATIC, "index.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if p == "/aura-camera.js":
+            with open(os.path.join(STATIC, "aura-camera.js"), "rb") as fh:
+                return self._send(200, fh.read(), "text/javascript; charset=utf-8")
         if p == "/api/health":
             return self._send(200, {"ok": True, "live_available": bool(os.environ.get("NEBIUS_API_KEY")) and agent is not None,
                                     "agent_error": AGENT_ERR, "simulate_kinds": {"live": S.LIVES, "spoof": S.SPOOFS}})
@@ -317,6 +385,8 @@ class H(BaseHTTPRequestHandler):
 
 def main():
     load_records()
+    import aura_pad
+    threading.Thread(target=aura_pad.load_model, daemon=True).start()  # warm PAD model; failure -> channel inconclusive
     port = int(os.environ.get("PORT", "8000"))
     srv = ThreadingHTTPServer(("127.0.0.1", port), H)
     print(f"VulnTriage + AURA on http://localhost:{port}  (live mode: {'on' if os.environ.get('NEBIUS_API_KEY') else 'off — demo engine'})")

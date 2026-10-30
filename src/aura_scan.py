@@ -41,6 +41,7 @@ GLINT_MIN_LEVEL = 180
 FLAT_GLINT_RATIO = 0.85
 PLANAR_RESIDUAL_EPS = 0.003
 JITTER_MIN, JITTER_MAX = 0.0015, 0.06
+REF_DT_MS = 1000.0 / 30.0
 MOIRE_ROW_SCORE = 0.5
 FLICKER_ALT_FRACTION = 0.6
 FLICKER_MIN_STEP = 1.5
@@ -522,7 +523,10 @@ def score_frames(frames: List[FrameObs], calibration: Optional[Calibration] = No
                 cnt += 1
         if cnt:
             jit.append(math.sqrt(e2 / cnt) / max(eye_w, 1e-9))
-    jitter = _median(jit)
+    # 2nd differences scale with dt^2: normalise to the 30 fps reference the range was set at,
+    # so low-fps webcams/in-browser detectors (often 10-20 fps) are not flagged for normal motion.
+    fps_norm = min(1.0, (REF_DT_MS / dt_ms) ** 2)
+    jitter = _median(jit) * fps_norm
     static_face = "StaticMesh" in reasons and not any_motion
     if not static_face and not (JITTER_MIN <= jitter <= JITTER_MAX):
         reasons.append("JitterOutOfRange")
