@@ -759,7 +759,9 @@ fn score_frames(frames: &[FrameObs], non_monotonic: bool, cal: &Calibration, tie
         }
         if cnt > 0.0 { jit.push((e2 / cnt).sqrt() / eye_w.max(1e-9)); }
     }
-    let jitter = median(&jit);
+    // 2nd differences scale with dt^2: normalise to the 30 fps reference (mirrors aura_scan.py).
+    let fps_norm = ((1000.0 / 30.0) / dt_ms).powi(2).min(1.0);
+    let jitter = median(&jit) * fps_norm;
     let static_face = reasons.contains(&StaticMesh) && !any_motion;
     if !static_face && !(JITTER_MIN..=JITTER_MAX).contains(&jitter) { reasons.push(JitterOutOfRange); }
     else if !static_face { ev.jitter_llr = 1.0; }

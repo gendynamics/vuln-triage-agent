@@ -23,6 +23,30 @@ phrase + nonce, scans, folds in the challenge, triages (or blocks), writes a rec
 refreshes the **VulnTriage records** panel. `?autorun=<Kind>` runs one automatically.
 If the backend is unreachable, the page falls back to its original offline demo mode.
 
+## Live camera test on your Mac (Chrome or Safari)
+
+```bash
+git checkout feature/aura-live-camera && git pull
+source .venv/bin/activate && python app/server.py
+open http://localhost:8000
+```
+
+1. AURA gate panel → *Silent scan source* → **Live camera · your webcam**.
+2. Tick the consent box (it is cleared every time you pick Live camera).
+3. Paste/pick a report and press **▶ Run triage**; allow the camera in the browser prompt.
+4. The phrase is shown and spoken ("Please say: …"). Wait for the voice to finish, then say it
+   clearly, facing the camera in good light. Status reads *Camera active — liveness check in progress*;
+   the camera stops after ~9 s (prompt + 6 s).
+5. Read the gate result; tick **Debug: show raw scores** for per-channel LLRs, vetoes and the
+   challenge codes. The record appears in *VulnTriage records*.
+
+MediaPipe FaceLandmarker (tasks-vision 0.10.14, jsDelivr) and `face_landmarker.task` load from the
+internet; if offline the panel says so and simulated mode keeps working. Eye crops (grayscale) are
+sent once with the scan request and dropped after scoring; nothing image-like is logged or stored.
+The silent scan scores the 5 s after the prompt ends (you are speaking), the challenge uses the
+same frames' lip features. Jitter is normalised to 30 fps (2nd differences scale with dt²) so
+slower in-browser detection doesn't trip `JitterOutOfRange`.
+
 ## How the pieces connect
 
 ```mermaid
@@ -58,9 +82,7 @@ sequenceDiagram
 and reason codes, challenge match ratio and the triage JSON — never images, landmarks or
 recognized words. `app/data/` is gitignored.
 
-**Real camera**: needs an upstream face-landmark detector (e.g. MediaPipe Face Mesh in
-the browser, or `aura_scan.capture_and_scan()` server-side) producing `frames` in the
-`FrameObs` JSON shape; not wired into the page in this build. The browser/OS camera
+**Real camera**: wired via `app/static/aura-camera.js` (MediaPipe in the browser). The browser/OS camera
 indicator and permission prompt must stay in effect.
 
 **Limits**: simulated inputs only in the UI; thresholds uncalibrated; 0.999 / 1e-5 are

@@ -44,5 +44,28 @@ class TestServer(unittest.TestCase):
         self.assertEqual(A.demo_result("SSRF to 169.254.169.254")["attack_technique"], "T1552.005 - Cloud Instance Metadata API")
 
 
+    def test_webcam_shaped_frames(self):
+        """Frames as sent by app/static/aura-camera.js (pixel coords + extra keys) are accepted and not persisted."""
+        import aura_scan as S
+        sim = S.synth_sequence("Live", seed=3)
+        def eye(e):
+            return {"contour": [list(p) for p in e.contour], "iris_center": list(e.iris_center), "iris_radius": e.iris_radius,
+                    "patch": {"origin": list(e.patch.origin), "width": e.patch.width, "height": e.patch.height, "pixels": list(e.patch.pixels)}}
+        frames = [{"t_ms": f.t_ms, "left_eye": eye(f.left_eye), "right_eye": eye(f.right_eye),
+                   "lips_outer": [list(p) for p in f.lips_outer], "lips_inner": [list(p) for p in f.lips_inner],
+                   "yaw": 3.0, "blend": {"jawOpen": 0.1}, "lip_z": [0, 0, 0, 0, 0, 0], "iod_px": 120.0} for f in sim]
+        _, ch = A.do_challenge({"consent": True})
+        body = {"consent": True, "frames": frames, "nonce": ch["nonce"]}
+        code, g = A.do_scan(body)
+        self.assertEqual(code, 200)
+        self.assertEqual(g["source"], "camera")
+        self.assertNotIn("frames", body)
+        self.assertIsNotNone(g["challenge"])
+        code, t = A.do_triage({"report": "x", "scan_id": g["scan_id"]})
+        self.assertEqual(code, 200)
+        text = open(A.RECORDS_PATH).read()
+        self.assertNotIn("pixels", text); self.assertNotIn("contour", text)
+
+
 if __name__ == "__main__":
     unittest.main()

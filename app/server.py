@@ -182,21 +182,40 @@ def do_scan(body):
             return 400, {"error": f"bad frames: {e}"}
     else:
         return 400, {"error": "provide simulate=<kind> or frames=[...]"}
+    body.pop("frames", None)  # raw webcam frames (eye crops) live only in this call
     tier = body.get("tier_gate", "high_assurance")
-    r = S.scan_window(frames, consent=True, tier=tier)
-    ch_out = None
     nonce = body.get("nonce")
+    ch = SESSION._active if nonce and SESSION._active and SESSION._active.nonce == nonce else None
+    camera_feats = None
+    if not kind:
+        # Webcam: challenge lip features come from the same frames (computed server-side);
+        # the silent scan scores the 5 s window starting when the prompt ends (user speaking).
+        camera_feats = []
+        for f in frames:
+            m = S.build_lip_mesh(f.lips_outer, f.lips_inner)
+            camera_feats.append(C.LipFeat(f.t_ms, m["openness"], m["spread"]))
+        if ch and not body.get("challenge_response"):
+            later = [f for f in frames if f.t_ms >= ch.prompt_end_ms]
+            if len(later) >= S.MIN_FRAMES:
+                frames = later
+    r = S.scan_window(frames, consent=True, tier=tier)  # zeroes pixels after scoring
+    frames = None
+    ch_out = None
     if nonce:
-        ch = SESSION._active if SESSION._active and SESSION._active.nonce == nonce else None
         if kind and ch:
             feats = simulated_response(kind, ch)
-        else:
+        elif body.get("challenge_response"):
             feats = [C.LipFeat(int(x["t_ms"]), float(x["openness"]), float(x["spread"]))
                      for x in body.get("challenge_response", [])]
+        else:
+            feats = camera_feats or []
         ch_out = SESSION.verify(nonce, feats)
         feats.clear()
         C.apply_to_scan(r, ch_out)
     g = gate_summary(r, ch_out, kind)
+    g["source"] = "simulated" if kind else "camera"
+    if camera_feats is not None:
+        camera_feats.clear()
     sid = uuid.uuid4().hex
     with LOCK:
         PENDING[sid] = g
@@ -241,7 +260,7 @@ def make_record(gate, result, tier, engine, valid):
            "blocked": result.get("triage", 1) is None,
            "aura": None if gate is None else {k: gate[k] for k in (
                "posterior", "evidence", "legacy_score", "legacy_pass", "high_assurance_pass", "aura_passed",
-               "vetoes", "reasons", "calibrated", "simulated")},
+               "vetoes", "reasons", "calibrated", "simulated", "frames_used")},
            "challenge_match_ratio": None if not gate or not gate.get("challenge") else gate["challenge"]["match_ratio"],
            "triage": {k: v for k, v in result.items() if k != "aura_gate"}}
     with LOCK:
@@ -291,6 +310,9 @@ class H(BaseHTTPRequestHandler):
         if p in ("/", "/index.html"):
             with open(os.path.join(STATIC, "index.html"), "rb") as fh:
                 return self._send(200, fh.read(), "text/html; charset=utf-8")
+        if p == "/aura-camera.js":
+            with open(os.path.join(STATIC, "aura-camera.js"), "rb") as fh:
+                return self._send(200, fh.read(), "text/javascript; charset=utf-8")
         if p == "/api/health":
             return self._send(200, {"ok": True, "live_available": bool(os.environ.get("NEBIUS_API_KEY")) and agent is not None,
                                     "agent_error": AGENT_ERR, "simulate_kinds": {"live": S.LIVES, "spoof": S.SPOOFS}})
