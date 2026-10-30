@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VulnTriage · Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07060c; --glass:rgba(255,255,255,.055); --glass2:rgba(255,255,255,.09);
+  --border:rgba(255,255,255,.13); --text:#f3f1f8; --muted:#a9a4b8;
+  --fire1:#ff7a18; --fire2:#ff2e63; --fire3:#ffb347; --cyan:#3ee6ff; --cyan2:#7c5cff;
+  --ok:#3dffa8; --bad:#ff4d6d;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+#embers{position:fixed;inset:0;z-index:0;pointer-events:none}
+.aurora{position:fixed;inset:-20%;z-index:0;pointer-events:none;filter:blur(80px);opacity:.55;
+  background:radial-gradient(40% 35% at 15% 100%,rgba(255,122,24,.55),transparent 70%),
+             radial-gradient(35% 30% at 55% 110%,rgba(255,46,99,.45),transparent 70%),
+             radial-gradient(30% 30% at 90% 0%,rgba(62,230,255,.28),transparent 70%),
+             radial-gradient(30% 30% at 0% 0%,rgba(124,92,255,.25),transparent 70%);
+  animation:drift 18s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate3d(3%,-3%,0) scale(1.06)}}
+.wrap{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:22px 26px 40px}
+header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.logo{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:22px;
+  background:linear-gradient(135deg,var(--fire1),var(--fire2));box-shadow:0 0 24px rgba(255,90,60,.55),inset 0 1px 0 rgba(255,255,255,.4)}
+h1{font-size:20px;margin:0;font-weight:800;letter-spacing:-.02em}
+h1 span{background:linear-gradient(90deg,var(--fire3),var(--fire2),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{color:var(--muted);font-size:12.5px}
+.spacer{flex:1}
+.mode{display:flex;gap:4px;padding:4px;border-radius:12px;background:var(--glass);border:1px solid var(--border);backdrop-filter:blur(14px)}
+.mode button{border:0;background:transparent;color:var(--muted);padding:7px 14px;border-radius:9px;font:600 12.5px var(--sans);cursor:pointer}
+.mode button.on{background:linear-gradient(135deg,rgba(255,122,24,.9),rgba(255,46,99,.9));color:#fff;box-shadow:0 4px 16px rgba(255,60,80,.35)}
+.keybox{display:none;align-items:center;gap:8px}
+.keybox.show{display:flex}
+.keybox input{width:230px}
+.stepper{display:flex;align-items:center;gap:0;margin:4px 0 18px;padding:12px 18px;border-radius:16px}
+.step{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;font-weight:600;white-space:nowrap}
+.dot{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font:600 11px var(--mono);border:1px solid var(--border);background:rgba(255,255,255,.04);transition:.35s}
+.step.active{color:var(--text)} .step.active .dot{border-color:var(--fire1);box-shadow:0 0 0 4px rgba(255,122,24,.18),0 0 18px rgba(255,122,24,.6);animation:pulse 1s infinite}
+.step.done{color:var(--text)} .step.done .dot{background:linear-gradient(135deg,var(--cyan),var(--cyan2));border-color:transparent;color:#06121a}
+.step.fail .dot{background:var(--bad);border-color:transparent;color:#fff}
+@keyframes pulse{50%{box-shadow:0 0 0 7px rgba(255,122,24,.05),0 0 26px rgba(255,122,24,.8)}}
+.bar{flex:1;height:2px;margin:0 14px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;min-width:20px}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--fire1),var(--cyan));transition:width .5s}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.25fr);gap:18px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px}
+.glass{position:relative;background:linear-gradient(160deg,rgba(255,255,255,.085),rgba(255,255,255,.03));
+  border:1px solid var(--border);border-radius:20px;backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);
+  box-shadow:0 20px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.14),inset 0 0 30px rgba(255,255,255,.025)}
+.panel{padding:18px 18px 20px}
+.ph{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.ph .n{font:600 11px var(--mono);color:var(--fire3);padding:3px 7px;border-radius:7px;background:rgba(255,179,71,.1);border:1px solid rgba(255,179,71,.25)}
+.ph h2{margin:0;font-size:14.5px;font-weight:700;letter-spacing:-.01em}
+.ph .r{margin-left:auto}
+textarea,input[type=text],input[type=password],input[type=number]{width:100%;background:rgba(0,0,0,.32);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:11px 12px;font:12.5px/1.55 var(--mono);outline:none;transition:.2s}
+textarea{min-height:200px;resize:vertical}
+textarea:focus,input:focus{border-color:rgba(62,230,255,.6);box-shadow:0 0 0 3px rgba(62,230,255,.15)}
+.btn{border:1px solid var(--border);background:var(--glass2);color:var(--text);padding:8px 12px;border-radius:10px;font:600 12px var(--sans);cursor:pointer;transition:.2s}
+.btn:hover{background:rgba(255,255,255,.15);transform:translateY(-1px)}
+.btn:focus-visible,.tier:focus-visible,.mode button:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.run{width:100%;padding:15px;border:0;border-radius:14px;font:700 15px var(--sans);color:#fff;cursor:pointer;letter-spacing:.01em;position:relative;overflow:hidden;
+  background:linear-gradient(120deg,var(--fire1),var(--fire2) 55%,var(--cyan2));background-size:200% 100%;box-shadow:0 10px 30px rgba(255,60,80,.4),inset 0 1px 0 rgba(255,255,255,.35);transition:.3s}
+.run:hover{background-position:100% 0;transform:translateY(-1px);box-shadow:0 14px 36px rgba(255,60,80,.55)}
+.run:disabled{filter:grayscale(.8);opacity:.6;cursor:not-allowed;transform:none}
+.run::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.35) 50%,transparent 70%);transform:translateX(-100%);animation:sheen 3.2s infinite}
+@keyframes sheen{60%,100%{transform:translateX(100%)}}
+.hint{font-size:11.5px;color:var(--muted);margin-top:8px}
+.field{margin-bottom:12px}
+.field label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:6px}
+.field label b{font:600 12px var(--mono);color:var(--text)}
+input[type=range]{width:100%;-webkit-appearance:none;appearance:none;height:6px;border-radius:6px;background:linear-gradient(90deg,var(--fire1),var(--fire2),var(--cyan2));outline:none;opacity:.9}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 0 0 4px rgba(255,255,255,.15),0 0 14px rgba(255,140,60,.8);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#fff;border:0}
+.row{display:flex;gap:10px;align-items:center}
+.seg{display:flex;padding:3px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid var(--border)}
+.seg button{border:0;background:transparent;color:var(--muted);padding:6px 12px;border-radius:8px;font:600 12px var(--sans);cursor:pointer}
+.seg button.on{background:rgba(62,230,255,.18);color:var(--cyan)}
+.switch{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);cursor:pointer;margin-left:auto}
+.switch input{appearance:none;width:34px;height:20px;border-radius:20px;background:rgba(255,255,255,.15);position:relative;cursor:pointer;transition:.2s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.2s}
+.switch input:checked{background:var(--fire1)} .switch input:checked::after{left:17px}
+.verdict{margin-top:14px;padding:14px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid var(--border);display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:center;transition:.3s}
+.verdict.pass{border-color:rgba(61,255,168,.35);box-shadow:inset 0 0 24px rgba(61,255,168,.06)}
+.verdict.fail{border-color:rgba(255,77,109,.45);box-shadow:inset 0 0 24px rgba(255,77,109,.08)}
+.verdict.skip{opacity:.55}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:11.5px}
+.kv span{color:var(--muted)} .kv b{font:600 11.5px var(--mono);text-align:right}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font:700 11px var(--sans);letter-spacing:.06em;text-transform:uppercase}
+.pill.ok{background:rgba(61,255,168,.14);color:var(--ok);border:1px solid rgba(61,255,168,.35)}
+.pill.no{background:rgba(255,77,109,.14);color:#ff8fa3;border:1px solid rgba(255,77,109,.4)}
+.pill.muted{background:rgba(255,255,255,.07);color:var(--muted);border:1px solid var(--border)}
+.reason{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tier{text-align:left;cursor:pointer;padding:12px;border-radius:14px;border:1px solid var(--border);background:rgba(0,0,0,.25);color:var(--text);transition:.25s;font-family:var(--sans)}
+.tier:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.3)}
+.tier.on{border-color:rgba(255,122,24,.7);background:linear-gradient(160deg,rgba(255,122,24,.2),rgba(255,46,99,.08));box-shadow:0 0 22px rgba(255,100,40,.25)}
+.tier .t{font-weight:800;font-size:14px;text-transform:capitalize}
+.tier .s{font:600 11px var(--mono);color:var(--fire3);margin:2px 0 8px}
+.tier code{display:block;font:10px/1.4 var(--mono);color:var(--muted);word-break:break-all}
+.out-empty{display:grid;place-items:center;min-height:420px;text-align:center;color:var(--muted);font-size:13px}
+.out-empty .big{font-size:40px;margin-bottom:8px;filter:drop-shadow(0 0 16px rgba(255,120,40,.6))}
+.ohead{display:grid;grid-template-columns:170px 1fr;gap:18px;align-items:center}
+.gauge{position:relative;width:170px;height:170px}
+.gauge svg{transform:rotate(-90deg)}
+.gauge .c{position:absolute;inset:0;display:grid;place-items:center;text-align:center}
+.gauge .c b{font:800 40px/1 var(--sans);letter-spacing:-.03em;display:block}
+.gauge .c small{font:600 10.5px var(--mono);color:var(--muted);letter-spacing:.1em}
+.sev{display:inline-block;padding:6px 12px;border-radius:10px;font:800 12px var(--sans);letter-spacing:.12em;text-transform:uppercase}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{padding:6px 10px;border-radius:10px;background:rgba(62,230,255,.1);border:1px solid rgba(62,230,255,.35);color:var(--cyan);font:600 12px var(--mono)}
+.chip.w{background:rgba(255,255,255,.06);border-color:var(--border);color:var(--text);font-family:var(--sans)}
+.summary{font-size:13.5px;line-height:1.55;margin:10px 0 0}
+.sect{margin-top:16px}
+.sect h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:700}
+.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.steps li{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-radius:11px;background:rgba(0,0,0,.25);border:1px solid var(--border);font-size:12.8px;line-height:1.45;cursor:pointer;transition:.2s;opacity:0;transform:translateY(6px);animation:in .45s forwards}
+.steps li.ck{opacity:.6;text-decoration:line-through}
+.steps li .bx{flex:none;width:17px;height:17px;border-radius:5px;border:1.5px solid rgba(255,255,255,.35);margin-top:1px;display:grid;place-items:center;font-size:11px}
+.steps li.ck .bx{background:var(--ok);border-color:var(--ok);color:#03200f}
+@keyframes in{to{opacity:1;transform:none}}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mbox{padding:12px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid var(--border)}
+.mbox .l{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:8px}
+.scale{display:flex;gap:5px}
+.scale i{flex:1;height:26px;border-radius:7px;background:rgba(255,255,255,.06);border:1px solid var(--border);display:grid;place-items:center;font:600 11px var(--mono);font-style:normal;color:var(--muted)}
+.scale i.on{color:#fff;border-color:transparent;background:linear-gradient(135deg,var(--fire1),var(--fire2));box-shadow:0 0 14px rgba(255,80,60,.45)}
+pre{margin:0;max-height:260px;overflow:auto;padding:12px;border-radius:12px;background:rgba(0,0,0,.4);border:1px solid var(--border);font:11.5px/1.55 var(--mono);color:#cfe9ff}
+.jk{color:#ffb347}.js{color:#9ef0c9}.jn{color:#3ee6ff}
+.banner{margin-bottom:14px;padding:9px 12px;border-radius:11px;font-size:12px;line-height:1.5}
+.banner.demo{background:rgba(255,179,71,.1);border:1px solid rgba(255,179,71,.35);color:#ffd59a}
+.banner.live{background:rgba(62,230,255,.1);border:1px solid rgba(62,230,255,.35);color:#aef4ff}
+.banner.err{background:rgba(255,77,109,.12);border:1px solid rgba(255,77,109,.45);color:#ffb3c1}
+footer{margin-top:22px;color:var(--muted);font-size:11.5px;text-align:center}
+@media (max-width:1150px){.grid{grid-template-columns:1fr 1fr}.grid>.col:last-child{grid-column:1/-1}}
+@media (max-width:760px){.grid{grid-template-columns:1fr}header{flex-wrap:wrap}.stepper{overflow-x:auto}.ohead{grid-template-columns:1fr;justify-items:center}.tiers{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="aurora"></div>
+<canvas id="embers" aria-hidden="true"></canvas>
+<div class="wrap">
+<header>
+  <div class="logo" aria-hidden="true">🔥</div>
+  <div><h1><span>VulnTriage</span> Console</h1><div class="sub">CVSS · MITRE ATT&amp;CK · Remediation — gated by AURA liveness</div></div>
+  <div class="spacer"></div>
+  <div class="keybox" id="keybox"><input type="password" id="apikey" placeholder="Nebius key (v1.…) — memory only" autocomplete="off" aria-label="Nebius API key"></div>
+  <div class="mode" role="group" aria-label="Mode"><button id="mDemo" class="on">Demo</button><button id="mLive">Live</button></div>
+</header>
+
+<div class="glass stepper" aria-label="Pipeline progress">
+  <div class="step" data-s="0"><div class="dot">1</div>Report</div><div class="bar"><i></i></div>
+  <div class="step" data-s="1"><div class="dot">2</div>AURA gate</div><div class="bar"><i></i></div>
+  <div class="step" data-s="2"><div class="dot">3</div>Nemotron</div><div class="bar"><i></i></div>
+  <div class="step" data-s="3"><div class="dot">4</div>Validate</div><div class="bar"><i></i></div>
+  <div class="step" data-s="4"><div class="dot">5</div>Triage</div>
+</div>
+
+<div class="grid">
+<div class="col">
+  <section class="glass panel" aria-labelledby="h-rep">
+    <div class="ph"><span class="n">01</span><h2 id="h-rep">Vulnerability report</h2><button class="btn r" id="loadSample">Load sample</button></div>
+    <textarea id="report" spellcheck="false" aria-label="Vulnerability report"></textarea>
+    <div class="hint" id="charcount"></div>
+  </section>
+  <section class="glass panel" aria-labelledby="h-tier">
+    <div class="ph"><span class="n">03</span><h2 id="h-tier">Model tier</h2><span class="r hint" style="margin:0">Nebius Token Factory</span></div>
+    <div class="tiers" id="tiers"></div>
+  </section>
+</div>
+
+<div class="col">
+  <section class="glass panel" aria-labelledby="h-aura">
+    <div class="ph"><span class="n">02</span><h2 id="h-aura">AURA liveness gate</h2>
+      <label class="switch"><input type="checkbox" id="skipGate"> Skip gate</label></div>
+    <div id="auraFields">
+      <div class="field"><label>Glint arc ratio <b id="v-glint"></b></label><input type="range" id="glint" min="0" max="1.2" step="0.01" value="0.52"></div>
+      <div class="field"><label>Eye width (px) <b id="v-eye"></b></label><input type="range" id="eye" min="0" max="300" step="1" value="120"></div>
+      <div class="field"><label>Mouth width (px) <b id="v-mouth"></b></label><input type="range" id="mouth" min="0" max="300" step="1" value="120"></div>
+      <div class="field"><label>Viseme match <b id="v-vis"></b></label><input type="range" id="vis" min="0" max="1" step="0.01" value="0.92"></div>
+      <div class="row"><span class="hint" style="margin:0">Distance</span>
+        <div class="seg" role="group" aria-label="Distance"><button id="dClose" class="on">Close · 30 cm</button><button id="dRange">Range · 1.5 m</button></div></div>
+    </div>
+    <div class="verdict" id="verdict">
+      <div class="gauge" style="width:96px;height:96px"><svg width="96" height="96"><circle cx="48" cy="48" r="40" stroke="rgba(255,255,255,.08)" stroke-width="8" fill="none"/><circle id="fg" cx="48" cy="48" r="40" stroke="url(#gg)" stroke-width="8" fill="none" stroke-linecap="round" stroke-dasharray="251.3" stroke-dashoffset="251.3" style="transition:stroke-dashoffset .5s"/><defs><linearGradient id="gg"><stop offset="0" stop-color="#ff7a18"/><stop offset="1" stop-color="#3ee6ff"/></linearGradient></defs></svg>
+        <div class="c"><div><b id="fusedTxt" style="font-size:20px">—</b><small>FUSED</small></div></div></div>
+      <div>
+        <div style="margin-bottom:8px"><span class="pill" id="aPill">—</span></div>
+        <div class="kv">
+          <span>Glint score</span><b id="k-g"></b>
+          <span>Lip-sync score</span><b id="k-l"></b>
+          <span>Lip-sync tier</span><b id="k-t"></b>
+          <span>Weights g / l</span><b id="k-w"></b>
+          <span>Threshold</span><b>≥ 0.85</b>
+        </div>
+      </div>
+      <div class="reason" id="aReason"></div>
+    </div>
+  </section>
+  <button class="run" id="runBtn">▶ Run triage</button>
+</div>
+
+<div class="col">
+  <section class="glass panel" aria-labelledby="h-out" aria-live="polite">
+    <div class="ph"><span class="n">04</span><h2 id="h-out">Triage output</h2><span class="r" id="schemaPill"></span></div>
+    <div id="out"><div class="out-empty"><div><div class="big">🜂</div>Run a triage to see CVSS, ATT&amp;CK mapping and remediation.</div></div></div>
+  </section>
+</div>
+</div>
+<footer>Single-file prototype · mirrors <code>src/agent.py</code> &amp; <code>src/aura.py</code> · API keys are held in memory only, never stored.</footer>
+</div>
+
+<script>
+"use strict";
+// ---------- Constants mirrored from src/agent.py ----------
+const NEBIUS_BASE_URL = "https://api.tokenfactory.nebius.com/v1";
+const MODEL_ROUTING = {
+  nano:  "nvidia/llama-3.1-nemotron-nano-8b-v1",
+  super: "nvidia/llama-3.1-nemotron-70b-instruct",
+  ultra: "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+};
+const TIER_SIZE = {nano:"8B", super:"70B", ultra:"253B"};
+const SYSTEM_PROMPT =
+  "You are a senior application security engineer. Given a vulnerability " +
+  "report, classify severity using CVSS, map it to the most relevant MITRE " +
+  "ATT&CK technique, and produce a remediation plan with concrete steps, " +
+  "affected assets, and estimated effort. Output strict JSON with keys " +
+  "severity, cvss_score, attack_technique, summary, remediation_steps, " +
+  "affected_assets, estimated_effort, and priority. No markdown, no preamble.";
+const USER_TEMPLATE = "Vulnerability report:\n{report}\n\nAnalyze and respond with the JSON schema above only.";
+const REQUIRED_KEYS = ["severity","cvss_score","attack_technique","summary","remediation_steps","affected_assets","estimated_effort","priority"];
+const SAMPLE = `Title: Unauthenticated SQL Injection in Search Endpoint
+Endpoint: GET /api/v2/search?q=
+Parameter: q (reflected in error page)
+Database: PostgreSQL 15
+Auth: None required
+PoC: /api/v2/search?q=' OR 1=1-- 
+Impact: Full read access to users, sessions, and payment_records tables.
+CVSS vector (submitter estimate): AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`;
+
+// ---------- Exact port of src/aura.py ----------
+const REAL_GLINT_ARC_RATIO=0.5, PHOTO_GLINT_ARC_RATIO=1.0, GLINT_ACCEPT_LOW=0.35, GLINT_ACCEPT_HIGH=0.75;
+const MOUTH_MIN_PX=50, MOUTH_HIGH_ACC_PX=200, VISEME_CLIFF_PX=45, LIPSYNC_ACCEPT=0.80;
+const TARGET_FALSE_ACCEPT=1e-5;
+function glintScore(g){ if(g.arc_ratio<=0) return 0; const dev=Math.abs(g.arc_ratio-REAL_GLINT_ARC_RATIO), max=Math.abs(PHOTO_GLINT_ARC_RATIO-REAL_GLINT_ARC_RATIO); return Math.max(0,1-dev/max); }
+function glintPassed(g){ return GLINT_ACCEPT_LOW<=g.arc_ratio && g.arc_ratio<=GLINT_ACCEPT_HIGH; }
+function lipTier(l){ if(l.mouth_width_px>=MOUTH_HIGH_ACC_PX) return "99.9%"; if(l.mouth_width_px>=MOUTH_MIN_PX) return "85-90%"; if(l.mouth_width_px>=VISEME_CLIFF_PX) return "cliff"; return "below_cliff"; }
+function lipScore(l){ if(l.mouth_width_px<VISEME_CLIFF_PX) return 0; const wf=Math.min(1,(l.mouth_width_px-VISEME_CLIFF_PX)/(MOUTH_HIGH_ACC_PX-VISEME_CLIFF_PX)); return wf*l.viseme_match; }
+function lipPassed(l){ return l.mouth_width_px>=MOUTH_MIN_PX && l.viseme_match>=LIPSYNC_ACCEPT; }
+function logOdds(p){ p=Math.min(Math.max(p,1e-9),1-1e-9); return Math.log(p/(1-p)); }
+function fuse(g,l){
+  const gs=glintScore(g), ls=lipScore(l);
+  let wg,wl; if(g.distance_hint==="close"){wg=.65;wl=.35;}else{wg=.30;wl=.70;}
+  const gp=glintPassed(g), lp=lipPassed(l);
+  if(!gp&&lp){wg=.15;wl=.85;} else if(gp&&!lp){wg=.85;wl=.15;}
+  else if(!gp&&!lp){ return {fused:0,weights:{glint:wg,lipsync:wl},passed:false,reason:"Both biometric channels failed — submission rejected.",gs,ls}; }
+  const lo=wg*logOdds(gs)+wl*logOdds(ls), p=1/(1+Math.exp(-lo)), passed=p>=0.85;
+  return {fused:p,weights:{glint:wg,lipsync:wl},passed,gs,ls,
+    reason: passed?"Biometric gate passed — real human verified.":"Fused confidence below threshold — possible synthetic submission."};
+}
+function verifySubmission(a){
+  const g={arc_ratio:a.glint_arc_ratio,eye_width_px:a.eye_width_px,distance_hint:a.distance_hint};
+  const l={mouth_width_px:a.mouth_width_px,viseme_match:a.viseme_match};
+  const v=fuse(g,l), r4=x=>Math.round(x*1e4)/1e4;
+  return {aura_passed:v.passed,fused_score:r4(v.fused),glint_score:r4(glintScore(g)),glint_arc_ratio:g.arc_ratio,
+    lipsync_score:r4(lipScore(l)),lipsync_tier:lipTier(l),channel_weights:v.weights,
+    false_accept_rate:"1 in "+Math.round(1/TARGET_FALSE_ACCEPT).toLocaleString("en-US"),reason:v.reason};
+}
+
+// ---------- Port of agent._validate ----------
+function validate(r){
+  const missing=REQUIRED_KEYS.filter(k=>!(k in r));
+  if(missing.length) throw new Error("schema missing keys: "+missing.join(", "));
+  if(!["critical","high","medium","low","informational"].includes(r.severity)) throw new Error("invalid severity: "+r.severity);
+  const c=parseFloat(r.cvss_score); if(!(c>=0&&c<=10)) throw new Error("cvss_score out of range: "+r.cvss_score);
+  if(!Array.isArray(r.remediation_steps)||!r.remediation_steps.length) throw new Error("remediation_steps must be a non-empty list");
+  if(!["S","M","L"].includes(r.estimated_effort)) throw new Error("invalid effort: "+r.estimated_effort);
+  const p=parseInt(r.priority,10); if(!(p>=1&&p<=5)) throw new Error("priority out of bounds: "+r.priority);
+  return r;
+}
+
+// ---------- State / UI ----------
+const $=id=>document.getElementById(id);
+const state={tier:"ultra",dist:"close",live:false};
+$("report").value=SAMPLE;
+const updCount=()=>$("charcount").textContent=$("report").value.length+" chars · sent as USER_TEMPLATE.format(report=…)";
+$("report").addEventListener("input",updCount); updCount();
+$("loadSample").onclick=()=>{$("report").value=SAMPLE;updCount();};
+
+const tiersEl=$("tiers");
+for(const t of ["nano","super","ultra"]){
+  const b=document.createElement("button"); b.className="tier"+(t===state.tier?" on":""); b.dataset.t=t;
+  b.setAttribute("aria-pressed",t===state.tier);
+  b.innerHTML=`<div class="t">${t}</div><div class="s">${TIER_SIZE[t]}${t==="ultra"?" · default":""}</div><code>${MODEL_ROUTING[t]}</code>`;
+  b.onclick=()=>{state.tier=t;tiersEl.querySelectorAll(".tier").forEach(x=>{x.classList.toggle("on",x.dataset.t===t);x.setAttribute("aria-pressed",x.dataset.t===t);});};
+  tiersEl.appendChild(b);
+}
+function setMode(live){state.live=live;$("mLive").classList.toggle("on",live);$("mDemo").classList.toggle("on",!live);$("keybox").classList.toggle("show",live);}
+$("mDemo").onclick=()=>setMode(false); $("mLive").onclick=()=>setMode(true);
+function setDist(d){state.dist=d;$("dClose").classList.toggle("on",d==="close");$("dRange").classList.toggle("on",d==="range");renderAura();}
+$("dClose").onclick=()=>setDist("close"); $("dRange").onclick=()=>setDist("range");
+
+function readings(){return{glint_arc_ratio:+$("glint").value,eye_width_px:+$("eye").value,mouth_width_px:+$("mouth").value,viseme_match:+$("vis").value,distance_hint:state.dist};}
+function renderAura(){
+  const a=readings(); $("v-glint").textContent=a.glint_arc_ratio.toFixed(2); $("v-eye").textContent=a.eye_width_px;
+  $("v-mouth").textContent=a.mouth_width_px; $("v-vis").textContent=a.viseme_match.toFixed(2);
+  const skip=$("skipGate").checked; $("auraFields").style.opacity=skip?.4:1;
+  const v=verifySubmission(a), el=$("verdict");
+  el.className="verdict "+(skip?"skip":v.aura_passed?"pass":"fail");
+  $("fg").style.strokeDashoffset=251.3*(1-v.fused_score);
+  $("fusedTxt").textContent=v.fused_score.toFixed(3);
+  $("k-g").textContent=v.glint_score.toFixed(4); $("k-l").textContent=v.lipsync_score.toFixed(4);
+  $("k-t").textContent=v.lipsync_tier; $("k-w").textContent=v.channel_weights.glint.toFixed(2)+" / "+v.channel_weights.lipsync.toFixed(2);
+  const pill=$("aPill");
+  if(skip){pill.className="pill muted";pill.textContent="Gate skipped";$("aReason").textContent="No readings passed to triage() — gate does not run (same as agent.py with aura=None).";}
+  else{pill.className="pill "+(v.aura_passed?"ok":"no");pill.textContent=v.aura_passed?"✓ Live human":"✕ Rejected";$("aReason").textContent=v.reason+" · target FAR "+v.false_accept_rate;}
+  return skip?null:v;
+}
+["glint","eye","mouth","vis","skipGate"].forEach(id=>$(id).addEventListener("input",renderAura));
+renderAura();
+
+// ---------- Stepper ----------
+const steps=[...document.querySelectorAll(".step")], bars=[...document.querySelectorAll(".bar i")];
+function stepReset(){steps.forEach(s=>s.className="step");bars.forEach(b=>b.style.width=0);}
+function stepTo(i,status){steps.forEach((s,k)=>{s.className="step"+(k<i?" done":k===i?" "+(status||"active"):"");});bars.forEach((b,k)=>b.style.width=k<i?"100%":"0");}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+// ---------- Demo result (derived from sample) ----------
+function demoResult(report){
+  const t=report.toLowerCase(); const sqli=/sql|injection|or 1=1/.test(t), xss=/xss|script/.test(t);
+  if(sqli) return {severity:"critical",cvss_score:9.8,attack_technique:"T1190 - Exploit Public-Facing Application",
+    summary:"Unauthenticated SQL injection in GET /api/v2/search (parameter q) allows arbitrary query execution against PostgreSQL 15, exposing users, sessions and payment_records.",
+    remediation_steps:["Replace string-built SQL in the search handler with parameterized queries / prepared statements.","Validate and allow-list the q parameter; enforce length and character limits.","Stop reflecting database errors in responses; return generic error pages.","Run the search service under a least-privilege DB role with no access to payment_records.","Rotate session tokens and review DB audit logs for prior exploitation.","Add a WAF SQLi rule and SAST/DAST checks in CI as defense in depth."],
+    affected_assets:["/api/v2/search","PostgreSQL 15","users","sessions","payment_records"],estimated_effort:"M",priority:1};
+  return {severity:xss?"medium":"high",cvss_score:xss?6.1:7.5,attack_technique:xss?"T1059.007 - JavaScript":"T1190 - Exploit Public-Facing Application",
+    summary:"Demo heuristic classification of the submitted report.",remediation_steps:["Reproduce and confirm the issue.","Apply input validation and output encoding.","Add a regression test."],
+    affected_assets:["unspecified"],estimated_effort:"S",priority:xss?3:2};
+}
+
+// ---------- Live call ----------
+async function liveCall(report,model){
+  const key=$("apikey").value.trim();
+  if(!key) throw new Error("NEBIUS_API_KEY not set — paste a key in the header field.");
+  if(!key.startsWith("v1.")) throw new Error("Token Factory key must start with 'v1.'");
+  let res;
+  try{
+    res=await fetch(NEBIUS_BASE_URL+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+      body:JSON.stringify({model,temperature:0.0,messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:USER_TEMPLATE.replace("{report}",report)}]})});
+  }catch(e){ const err=new Error("Browser request blocked (likely CORS). Run `python src/agent.py` for live calls, or serve this page via a small proxy."); err.cors=true; throw err; }
+  if(!res.ok) throw new Error("HTTP "+res.status+": "+(await res.text()).slice(0,200));
+  const data=await res.json(); let raw=data.choices[0].message.content.trim();
+  if(raw.startsWith("```")){raw=raw.split("\n").slice(1).join("\n"); if(raw.endsWith("```")) raw=raw.slice(0,-3);}
+  return JSON.parse(raw);
+}
+
+// ---------- Render output ----------
+const SEV={critical:"#ff2e63",high:"#ff7a18",medium:"#ffcc33",low:"#3ee6ff",informational:"#a9a4b8"};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function hl(json){return esc(json).replace(/(&quot;[^&]*?&quot;)(\s*:)?|\b(-?\d+\.?\d*)\b/g,(m,s,colon,n)=>s?(colon?`<span class="jk">${s}</span>${colon}`:`<span class="js">${s}</span>`):`<span class="jn">${n}</span>`);}
+function renderOut(r,banner,valid,verr){
+  const col=SEV[r.severity]||"#aaa", C=2*Math.PI*72, frac=Math.max(0,Math.min(1,(+r.cvss_score||0)/10));
+  const pr=+r.priority, json=JSON.stringify(r,null,2);
+  $("schemaPill").innerHTML=valid?'<span class="pill ok">✓ schema valid</span>':'<span class="pill no">✕ schema invalid</span>';
+  $("out").innerHTML=`${banner}
+  ${valid?"":`<div class="banner err">_validate(): ${esc(verr)}</div>`}
+  <div class="ohead">
+    <div class="gauge"><svg width="170" height="170"><circle cx="85" cy="85" r="72" stroke="rgba(255,255,255,.08)" stroke-width="12" fill="none"/>
+      <circle id="cv" cx="85" cy="85" r="72" stroke="${col}" stroke-width="12" fill="none" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}" style="transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1);filter:drop-shadow(0 0 10px ${col})"/></svg>
+      <div class="c"><div><b id="cvn" style="color:${col}">0.0</b><small>CVSS</small></div></div></div>
+    <div><span class="sev" style="background:${col}22;color:${col};border:1px solid ${col}66">${esc(r.severity)}</span>
+      <div class="chips"><span class="chip">MITRE ATT&amp;CK · ${esc(r.attack_technique)}</span></div>
+      <p class="summary">${esc(r.summary)}</p></div>
+  </div>
+  <div class="sect"><h3>Remediation plan</h3><ul class="steps">${(Array.isArray(r.remediation_steps)?r.remediation_steps:[]).map((s,i)=>`<li style="animation-delay:${.08*i}s" tabindex="0"><span class="bx"></span><span>${esc(s)}</span></li>`).join("")}</ul></div>
+  <div class="sect"><h3>Affected assets</h3><div class="chips">${(r.affected_assets||[]).map(a=>`<span class="chip w">${esc(a)}</span>`).join("")}</div></div>
+  <div class="sect meta">
+    <div class="mbox"><div class="l">Estimated effort</div><div class="scale">${["S","M","L"].map(e=>`<i class="${e===r.estimated_effort?"on":""}">${e}</i>`).join("")}</div></div>
+    <div class="mbox"><div class="l">Priority (1 = urgent)</div><div class="scale">${[1,2,3,4,5].map(p=>`<i class="${p===pr?"on":""}">${p}</i>`).join("")}</div></div>
+  </div>
+  <div class="sect"><h3 style="display:flex;align-items:center">Raw JSON<button class="btn" id="copy" style="margin-left:auto">Copy</button></h3><pre>${hl(json)}</pre></div>`;
+  setTimeout(()=>{$("cv").style.strokeDashoffset=C*(1-frac);},30);
+  let t0=null; const target=+r.cvss_score||0;
+  requestAnimationFrame(function tick(t){if(t0===null)t0=t;const k=location.hash==="#demo"?1:Math.max(0,Math.min(1,(t-t0)/1100));$("cvn").textContent=(target*(1-Math.pow(1-k,3))).toFixed(1);if(k<1)requestAnimationFrame(tick);});
+  document.querySelectorAll(".steps li").forEach(li=>{const tg=()=>{li.classList.toggle("ck");li.querySelector(".bx").textContent=li.classList.contains("ck")?"✓":"";};li.onclick=tg;li.onkeydown=e=>{if(e.key===" "||e.key==="Enter"){e.preventDefault();tg();}};});
+  $("copy").onclick=async()=>{try{await navigator.clipboard.writeText(json);$("copy").textContent="Copied ✓";}catch{$("copy").textContent="Copy failed";}setTimeout(()=>$("copy").textContent="Copy",1500);};
+}
+function renderBlocked(v){
+  $("schemaPill").innerHTML='<span class="pill no">blocked</span>';
+  const obj={aura_gate:v,triage:null,error:"AURA biometric verification failed"};
+  $("out").innerHTML=`<div class="banner err">⛔ AURA biometric verification failed — triage blocked before any model call.</div><pre>${hl(JSON.stringify(obj,null,2))}</pre>`;
+}
+
+// ---------- Run ----------
+$("runBtn").onclick=async()=>{
+  const btn=$("runBtn"); btn.disabled=true; btn.textContent="Running…"; stepReset();
+  const report=$("report").value, model=MODEL_ROUTING[state.tier]||MODEL_ROUTING.ultra;
+  try{
+    stepTo(0); await sleep(350);
+    stepTo(1); await sleep(500);
+    const v=renderAura();
+    if(v&&!v.aura_passed){stepTo(1,"fail");renderBlocked(v);return;}
+    stepTo(2);
+    let r, banner;
+    if(state.live){
+      try{ r=await liveCall(report,model); banner=`<div class="banner live">● Live — ${esc(model)} via Nebius Token Factory</div>`; }
+      catch(e){ r=demoResult(report); banner=`<div class="banner err">Live call failed: ${esc(e.message)} Showing demo output instead.</div><div class="banner demo">Demo output — not a live model call</div>`; }
+    } else { await sleep(900); r=demoResult(report); banner=`<div class="banner demo">◆ Demo output — not a live model call · tier <b>${state.tier}</b> → ${esc(model)}</div>`; }
+    stepTo(3); await sleep(300);
+    let valid=true, verr=""; try{validate(r);}catch(e){valid=false;verr=e.message;}
+    if(v) r.aura_gate=v;
+    stepTo(valid?5:3, valid?undefined:"fail");
+    renderOut(r,banner,valid,verr);
+  } finally { btn.disabled=false; btn.textContent="▶ Run triage"; }
+};
+
+// ---------- Ember / spark canvas ----------
+(function(){
+  const cv=$("embers"), ctx=cv.getContext("2d"); let W,H,P=[]; const dpr=Math.min(2,window.devicePixelRatio||1);
+  function size(){W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+"px";cv.style.height=H+"px";ctx.setTransform(dpr,0,0,dpr,0,0);}
+  size(); addEventListener("resize",size);
+  const N=Math.round(Math.min(140,W/9));
+  function spawn(init){const cool=Math.random()<.18;return{x:Math.random()*W,y:init?Math.random()*H:H+10,r:Math.random()*2.2+.4,vy:-(Math.random()*.9+.3),vx:(Math.random()-.5)*.3,ph:Math.random()*6.28,life:1,
+    hue:cool?185+Math.random()*20:10+Math.random()*30,cool};}
+  for(let i=0;i<N;i++)P.push(spawn(true));
+  const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    const g=ctx.createLinearGradient(0,H,0,H*.55);g.addColorStop(0,"rgba(255,70,40,.22)");g.addColorStop(.5,"rgba(255,30,100,.07)");g.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=g;ctx.fillRect(0,H*.55,W,H*.45);
+    ctx.globalCompositeOperation="lighter";
+    for(const p of P){p.ph+=.03;p.x+=p.vx+Math.sin(p.ph)*.35;p.y+=p.vy;p.life=Math.min(1,(p.y/H)*1.3);
+      if(p.y<-10)Object.assign(p,spawn(false));
+      const a=Math.max(0,p.life)*.9, rad=p.r*4;
+      const gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rad);gr.addColorStop(0,`hsla(${p.hue},100%,${p.cool?70:65}%,${a})`);gr.addColorStop(1,`hsla(${p.hue},100%,50%,0)`);
+      ctx.fillStyle=gr;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,6.283);ctx.fill();}
+    ctx.globalCompositeOperation="source-over";
+    if(!reduce)requestAnimationFrame(frame);
+  }
+  frame();
+})();
+if(location.hash==="#demo") setTimeout(()=>$("runBtn").click(),300);
+</script>
+</body>
+</html>

@@ -11,7 +11,7 @@ AI-powered vulnerability triage with biometric submission gating.
 
 ```bash
 export NEBIUS_API_KEY=v1.your_token_factory_key
-pip install openai
+pip install -r requirements.txt
 python src/agent.py
 ```
 

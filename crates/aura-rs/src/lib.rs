@@ -5,7 +5,7 @@
 // in the demo video's closing beat — same math, zero-cost abstractions,
 // memory-safe by construction.
 
-use serde::{Serialize, deserialize_from_str, Serialize as _}; // placeholder for build
+use serde::Serialize;
 
 /// Real-eye glint-arc ratio ~0.5; flat photo = 1.0.
 pub const REAL_GLINT_ARC_RATIO: f64 = 0.5;
