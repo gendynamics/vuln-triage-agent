@@ -15,6 +15,33 @@ pip install -r requirements.txt
 python src/agent.py
 ```
 
+## How VulnTriage uses NVIDIA Nemotron and Nebius Token Factory
+
+All LLM inference runs on **NVIDIA Nemotron** models served by **Nebius Token Factory**
+(`src/agent.py`). The agent uses the `openai` Python client pointed at Token Factory's
+OpenAI-compatible endpoint, `https://api.tokenfactory.nebius.com/v1`.
+
+| Tier | Model | Used for |
+|---|---|---|
+| `nano` | `nvidia/llama-3.1-nemotron-nano-8b-v1` | fastest/cheapest; used by the `python src/agent.py` demo |
+| `super` | `nvidia/llama-3.1-nemotron-70b-instruct` | mid-size option |
+| `ultra` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` | default for `triage()`; also the fallback for an unknown tier |
+
+The tier is picked by the caller (`triage(report, tier=...)`); all tiers run the same
+prompt. Flow: the AURA liveness gate runs first, and if it fails, no model is called.
+Otherwise one chat completion is made (`temperature=0.0`) with a system prompt asking the model, acting as an AppSec
+engineer, to classify severity using CVSS, map the report to a MITRE ATT&CK technique and write a
+remediation plan as strict JSON (`severity`, `cvss_score`, `attack_technique`, `summary`,
+`remediation_steps`, `affected_assets`, `estimated_effort`, `priority`). Code fences are
+stripped and the JSON is schema-checked: severity enum, CVSS score 0–10, non-empty steps, effort S/M/L, priority 1–5.
+
+**API key.** Create an account at https://tokenfactory.nebius.com (Google or GitHub
+login), open **API keys**, click **Create API key** and copy it. It is shown only once. Then run
+`export NEBIUS_API_KEY=v1....`. The agent exits if the key is missing or doesn't start with `v1.`.
+
+**Tests** (`tests/test_agent.py`) mock the Token Factory client (`TestMockedTokenFactory`,
+`TestModelTierRouting`), so CI needs no key or network.
+
 ## Tests
 
 ```bash
