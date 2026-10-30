@@ -139,3 +139,47 @@ class ConsistencyTests(unittest.TestCase):
 
     def test_gap(self):
         self.assertIn("IrregularTiming", W.consistency_channel(_cons_frames(gap_at=30))[1])
+
+
+# 3D face points (x, y, z) in IOD units: nose tip/bridge forward, cheeks back
+_FACE3D = [(0, 0.45, -0.45), (0, -0.1, -0.2), (-0.65, 0, 0), (0.65, 0, 0), (-0.2, 0, -0.05), (0.2, 0, -0.05),
+           (-0.35, 0.9, -0.1), (0.35, 0.9, -0.1), (0, 1.4, -0.05), (0, -0.7, -0.05), (-0.95, 0.4, 0.35), (0.95, 0.4, 0.35)]
+
+
+def _proj_frames(flat=False, yaw_max=20.0, n=30, noise=0.002, seed=0):
+    rng = random.Random(seed); out = []
+    for i in range(n):
+        yaw = yaw_max * math.sin(i / n * math.pi)
+        c, s_ = math.cos(math.radians(yaw)), math.sin(math.radians(yaw))
+        pts = []
+        for x, y, z in _FACE3D:
+            z = 0.0 if flat else z
+            if flat:  # a photo turned like a card: rotate the plane itself
+                X, Z = c * x + s_ * z, -s_ * x + c * z
+            else:
+                X, Z = c * x + s_ * z, -s_ * x + c * z
+            f = 600 / (6 + Z)
+            pts.append((320 + 100 * X * f / 100 + rng.gauss(0, noise * 100), 240 + 100 * y * f / 100 + rng.gauss(0, noise * 100)))
+        il, ir = pts[2], pts[3]
+        out.append({"t_ms": i * 33, "mesh2d": pts, "yaw": yaw, "iris_l": il, "iris_r": ir})
+    return out
+
+
+class PlanarityTests(unittest.TestCase):
+    def test_homography_exact(self):
+        src = [(0, 0), (1, 0), (0, 1), (1, 1), (0.5, 0.3)]
+        dst = [((2 * x + 1) / (0.1 * x + 1), (3 * y + x) / (0.1 * x + 1)) for x, y in src]
+        H = W.fit_homography(src, dst)
+        for p, q in zip(src, dst):
+            self.assertLess(math.dist(H(p), q), 1e-6)
+
+    def test_real_face_has_parallax(self):
+        llr, rs, vs = W.planarity_channel(_proj_frames())
+        self.assertEqual(vs, []); self.assertGreater(llr, 0)
+
+    def test_rotated_photo_is_planar(self):
+        llr, rs, vs = W.planarity_channel(_proj_frames(flat=True))
+        self.assertIn("PlanarFace", vs)
+
+    def test_static_pose_inconclusive(self):
+        self.assertEqual(W.planarity_channel(_proj_frames(flat=True, yaw_max=3))[1], ["PoseTooStatic3D"])

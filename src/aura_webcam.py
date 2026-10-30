@@ -269,6 +269,90 @@ def consistency_channel(extras: List[dict]) -> Tuple[float, List[str]]:
     return llr, rs
 
 
+# ---------------- planar vs 3D (parallax) ----------------
+PLANAR_RES = 0.012   # median homography residual / IOD below this with enough pose change -> flat
+DEPTH_RES = 0.02
+MIN_YAW_RANGE = 8.0  # degrees of head rotation needed before the test means anything
+
+
+def _solve(A, b):
+    n = len(b); M = [row[:] + [b[i]] for i, row in enumerate(A)]
+    for c in range(n):
+        p = max(range(c, n), key=lambda r: abs(M[r][c]))
+        if abs(M[p][c]) < 1e-12:
+            return None
+        M[c], M[p] = M[p], M[c]
+        for r in range(n):
+            if r != c:
+                f = M[r][c] / M[c][c]
+                for k in range(c, n + 1):
+                    M[r][k] -= f * M[c][k]
+    return [M[i][n] / M[i][i] for i in range(n)]
+
+
+def fit_homography(src: Sequence[Pt], dst: Sequence[Pt]):
+    """Least-squares DLT with h33 = 1 (normal equations). Coordinates normalised for conditioning."""
+    def norm(pts):
+        cx = _mean([p[0] for p in pts]); cy = _mean([p[1] for p in pts])
+        s = _mean([math.hypot(p[0] - cx, p[1] - cy) for p in pts]) or 1.0
+        return [((p[0] - cx) / s, (p[1] - cy) / s) for p in pts], (cx, cy, s)
+    a, ta = norm(src); b, tb = norm(dst)
+    rows, rhs = [], []
+    for (x, y), (u, v) in zip(a, b):
+        rows.append([x, y, 1, 0, 0, 0, -u * x, -u * y]); rhs.append(u)
+        rows.append([0, 0, 0, x, y, 1, -v * x, -v * y]); rhs.append(v)
+    AtA = [[sum(r[i] * r[j] for r in rows) for j in range(8)] for i in range(8)]
+    Atb = [sum(r[i] * y for r, y in zip(rows, rhs)) for i in range(8)]
+    h = _solve(AtA, Atb)
+    if h is None:
+        return None
+    def apply(p):
+        x, y = (p[0] - ta[0]) / ta[2], (p[1] - ta[1]) / ta[2]
+        w = h[6] * x + h[7] * y + 1
+        return ((h[0] * x + h[1] * y + h[2]) / w * tb[2] + tb[0], (h[3] * x + h[4] * y + h[5]) / w * tb[2] + tb[1])
+    return apply
+
+
+def planarity_features(extras: List[dict]) -> Optional[dict]:
+    """For each frame vs the most-frontal frame: fit a homography to the 12 sparse landmarks and take the
+    median residual / IOD. A flat photo/screen maps exactly by a homography; a 3D face shows parallax
+    (nose vs cheeks) once the head rotates. Report the 90th-percentile residual over frames + yaw range."""
+    fr = [e for e in extras if e.get("mesh2d") and len(e["mesh2d"]) >= 8 and e.get("yaw") is not None]
+    if len(fr) < 10:
+        return None
+    yaws = [e["yaw"] for e in fr]
+    ref = min(fr, key=lambda e: abs(e["yaw"]))
+    src = [tuple(p) for p in ref["mesh2d"]]
+    res = []
+    for e in fr:
+        dst = [tuple(p) for p in e["mesh2d"]]
+        H = fit_homography(src, dst)
+        if H is None:
+            continue
+        iod = math.dist(e["iris_l"], e["iris_r"]) or 1.0
+        d = sorted(math.dist(H(s_), t) for s_, t in zip(src, dst))
+        res.append(d[len(d) // 2] / iod)
+    if not res:
+        return None
+    res.sort()
+    return {"residual_p90": res[min(len(res) - 1, int(0.9 * len(res)))], "yaw_range": max(yaws) - min(yaws), "n": len(res)}
+
+
+def planarity_channel(extras: List[dict]) -> Tuple[float, List[str], List[str]]:
+    """Needs >= 8 deg yaw range (else 0, "PoseTooStatic3D"). residual < 0.012 IOD -> veto "PlanarFace";
+    > 0.02 -> +1.0 (3D parallax present)."""
+    f = planarity_features(extras)
+    if f is None:
+        return 0.0, [], []
+    if f["yaw_range"] < MIN_YAW_RANGE:
+        return 0.0, ["PoseTooStatic3D"], []
+    if f["residual_p90"] < PLANAR_RES:
+        return -3.0, [], ["PlanarFace"]
+    if f["residual_p90"] > DEPTH_RES:
+        return 1.0, [], []
+    return 0.0, [], []
+
+
 def extras_from_json(arr: List[dict]) -> List[dict]:
     out = []
     for f in arr:
@@ -293,4 +377,6 @@ def apply_webcam_channels(r, scan_extras: List[dict], all_extras: Optional[List[
     apply_channel(r, "attention_llr", llr, rs, calibration=calibration)
     llr, rs = consistency_channel(scan_extras)
     apply_channel(r, "consistency_llr", llr, rs, calibration=calibration)
+    llr, rs, vs = planarity_channel(scan_extras)
+    apply_channel(r, "planarity_llr", llr, rs, vs, calibration=calibration)
     return r

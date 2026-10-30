@@ -11,6 +11,7 @@ const R_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 
 const L_IRIS = [468, 469, 470, 471, 472], R_IRIS = [473, 474, 475, 476, 477];
 const LIPS_O = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
 const LIPS_I = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308, 415, 310, 311, 312, 13, 82, 81, 80, 191];
+const MESH_PTS = [1, 168, 33, 263, 133, 362, 61, 291, 199, 10, 234, 454]; // nose tip/bridge, eye corners, mouth corners, chin, forehead, cheek edges
 const BLEND_KEEP = ["jawOpen", "mouthPucker", "mouthFunnel", "mouthClose", "mouthSmileLeft", "mouthSmileRight", "eyeBlinkLeft", "eyeBlinkRight",
   "eyeLookInLeft", "eyeLookOutLeft", "eyeLookUpLeft", "eyeLookDownLeft", "eyeLookInRight", "eyeLookOutRight", "eyeLookUpRight", "eyeLookDownRight"];
 
@@ -84,6 +85,7 @@ export async function capture(durationMs, { t0 = performance.now(), onStatus = (
       // Canonical-frame extras (expression coefficients + pose; not identity, not stored).
       const z = (i) => L[i].z * W;
       f.lip_z = [z(0), z(17), z(13), z(14), z(61), z(291)];
+      f.mesh2d = MESH_PTS.map(P); // 12 sparse pixel landmarks for the planar-vs-3D (parallax) check
       f.iod_px = Math.hypot(P(468)[0] - P(473)[0], P(468)[1] - P(473)[1]);
       const ps = pose(r.facialTransformationMatrixes && r.facialTransformationMatrixes[0]);
       if (ps) { f.yaw = ps.yaw; f.pitch = ps.pitch; stats.yaw.push(ps.yaw); }
